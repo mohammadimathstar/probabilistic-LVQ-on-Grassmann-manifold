@@ -1,0 +1,15 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+data/*
+pretrained_models/*
+run_prototypes/
+*/__pycache__/
+features/state_dicts
