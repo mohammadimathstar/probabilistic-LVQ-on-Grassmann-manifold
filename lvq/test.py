@@ -10,17 +10,17 @@ from tqdm import tqdm
 import torch.utils.data
 from torch.utils.data import DataLoader
 
-from lvq.model import Model
+from lvq.model import GrassmannLVQModel
 from util.glvq import metrics
 from util.log import Log
-from util.utils import smooth_labels
+from util.glvq import smooth_labels
 
 import numpy as np
 import argparse
 
 
 @torch.no_grad()
-def eval(model: Model,
+def eval(model: GrassmannLVQModel,
          test_loader: DataLoader,
          epoch: int,
          loss,
@@ -61,7 +61,9 @@ def eval(model: Model,
         # predict labels
         yspred = model.prototype_layer.yprotos[scores.argmax(axis=1)]
         acc = torch.sum(torch.eq(yspred, ys)).item() / float(len(xs))
-        cost = loss(scores, soft_targets)
+
+        cost = loss(scores, ys)
+        # cost = loss(scores, soft_targets)
 
         # compute the confusion matrix
         acc, cmat = metrics(ys, yspred, nclasses=nclasses)

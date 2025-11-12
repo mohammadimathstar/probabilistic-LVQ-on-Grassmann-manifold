@@ -15,18 +15,18 @@ import torch.utils.data
 import torch.utils.data
 from torch.utils.data import DataLoader
 
-from lvq.model import Model
+from lvq.model import GrassmannLVQModel
 # from lvq.prototypes import rotate_prototypes
 from util.grassmann import orthogonalize_batch
 from util.log import Log
 # from util.glvq import make_soft_labels
-from util.utils import smooth_labels
+from util.glvq import smooth_labels
 
 def train_epoch(
-        model: Model,
-        train_loader: DataLoader,
+        model: GrassmannLVQModel,
+        trainloader: DataLoader,
         epoch: int,
-        loss,
+        loss_fn,
         args: argparse.Namespace,
         optimizer_net: torch.optim.Optimizer,
         optimizer_protos: torch.optim.Optimizer,
@@ -50,8 +50,8 @@ def train_epoch(
 
     # to show the progress-bar
     train_iter = tqdm(
-        enumerate(train_loader),
-        total=len(train_loader),
+        enumerate(trainloader),
+        total=len(trainloader),
         desc=progress_prefix + ' %s' % epoch,
         ncols=0
     )
@@ -59,7 +59,7 @@ def train_epoch(
     acc_mean = 0
 
     # training process (one epoch)
-    for i, (xtrain, ytrain) in enumerate(train_loader):
+    for i, (xtrain, ytrain) in enumerate(trainloader):
         soft_targets = smooth_labels(ytrain, nclasses, args.epsilon)
 
         # ****** for the first solution
@@ -69,10 +69,12 @@ def train_epoch(
         
 
         xtrain, ytrain, soft_targets = xtrain.to(device), ytrain.to(device), soft_targets.to(device)
+        # xtrain, ytrain = xtrain.to(device), ytrain.to(device)
         scores = model(xtrain)
 
         log_probs = scores
-        cost = loss(log_probs, soft_targets)
+        cost = loss_fn(log_probs, ytrain)
+        # cost = loss_fn(log_probs, soft_targets)
         
         cost.backward()
 
@@ -82,25 +84,28 @@ def train_epoch(
         optimizer_net.step()
         with torch.no_grad():
             model.prototype_layer.xprotos.copy_(orthogonalize_batch(model.prototype_layer.xprotos))
-            #CHECK
-            LOW_BOUND_LAMBDA = 0.0001
-            model.prototype_layer.relevances[0, torch.argwhere(model.prototype_layer.relevances < LOW_BOUND_LAMBDA)[:, 1]] = LOW_BOUND_LAMBDA
-            model.prototype_layer.relevances[:] = model.prototype_layer.relevances[
-                                                  :] / model.prototype_layer.relevances.sum()
+            
 
         ##### second way: manual update ##############
         # with torch.no_grad():
         #     protos_updates = model.prototype_layer.xprotos - args.lr_protos * model.prototype_layer.xprotos.grad
         #     rel_updates = model.prototype_layer.relevances - args.lr_rel * model.prototype_layer.relevances.grad
         #     model.prototype_layer.xprotos.copy_(orthogonalize_batch(protos_updates))
-        #     model.prototype_layer.relevances.copy_(rel_updates)            
+        #     model.prototype_layer.relevances.copy_(rel_updates)         
+        
+        
+        with torch.no_grad():
+            LOW_BOUND_LAMBDA = 0.0001
+            model.prototype_layer.relevances[0, torch.argwhere(model.prototype_layer.relevances < LOW_BOUND_LAMBDA)[:, 1]] = LOW_BOUND_LAMBDA
+            model.prototype_layer.relevances[:] = model.prototype_layer.relevances[
+                                                  :] / model.prototype_layer.relevances.sum()
 
         # compute the accuracy
         yspred = model.prototype_layer.yprotos[scores.argmax(axis=1)]
         acc = torch.sum(torch.eq(yspred, ytrain)).item() / float(len(xtrain))
 
         train_iter.set_postfix_str(
-            f"Batch [{i + 1}/{len(train_loader)}, Loss: {cost.sum().item(): .3f}, Acc: {acc * 100: .2f}"
+            f"Batch [{i + 1}/{len(trainloader)}, Loss: {cost.sum().item(): .3f}, Acc: {acc * 100: .2f}"
         )
         acc_mean += acc
 

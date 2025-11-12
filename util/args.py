@@ -27,7 +27,7 @@ def get_args() -> argparse.Namespace:
                         help='The name of dataset for training.')
     parser.add_argument('--nclasses',
                         type=int,
-                        default=37,
+                        default=37, #37, #196,
                         help="The number of classes."
                         )
     parser.add_argument('--net',
@@ -42,7 +42,7 @@ def get_args() -> argparse.Namespace:
                              'vgg19_bn')
     parser.add_argument('--epsilon',
                         type=float,
-                        default='0.001',
+                        default=0.001,
                         help="To create a smooth probability function (instead of one-hot encoding)."
                         )
     parser.add_argument('--beta',
@@ -50,9 +50,14 @@ def get_args() -> argparse.Namespace:
                         default=1.0,
                         help="The hyperparameter for the scoring function (related to temperature)."
                         )
+    parser.add_argument('--seed',
+                        type=int,
+                        default=42,
+                        help="The random seed for initialization."
+                        )
     parser.add_argument('--batch_size_train',
                         type=int,
-                        default=4,
+                        default=16,
                         help='Batch size of training data.')
     parser.add_argument('--batch_size_test',
                         type=int,
@@ -73,7 +78,7 @@ def get_args() -> argparse.Namespace:
                         help='Height of the prototype. Correct behaviour of the model with H1 != 1 is not guaranteed')
     parser.add_argument('--num_features',
                         type=int,
-                        default=256, # 512
+                        default=512, # 512
                         # default=128,
                         help='Depth of the prototype and therefore also depth of convolutional output')
     parser.add_argument('--num_of_protos',
@@ -94,16 +99,16 @@ def get_args() -> argparse.Namespace:
                         )
     parser.add_argument('--coef_dim_of_subspace',
                         type=int,
-                        default=2,
+                        default=1,
                         help="The number of times of d (for svd decomposition = coef x d)."
                         )
     parser.add_argument('--lr_protos',
                         type=float,
-                        default=1e-1,
+                        default=5e-2,
                         help='The learning rate for the training of the prototypes')
     parser.add_argument('--lr_rel',
                         type=float,
-                        default=1e-5,#1e-6,
+                        default=1e-6,#1e-6,
                         help='The learning rate for the training of the relevances.')
     parser.add_argument('--lr_block',
                         type=float,
@@ -111,7 +116,7 @@ def get_args() -> argparse.Namespace:
                         help='The optimizer learning rate for training the 1x1 conv layer and last conv layer of the underlying neural network (applicable to resnet50 and densenet121)')
     parser.add_argument('--freeze_epochs',
                         type=int,
-                        default=2,
+                        default=10,
                         help='Number of epochs where pretrained features_net will be frozen.'
                         )
     parser.add_argument('--lr_net',

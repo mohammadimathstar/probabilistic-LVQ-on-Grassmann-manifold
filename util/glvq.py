@@ -18,6 +18,8 @@ def metrics(y_true: Tensor, y_pred: Tensor, nclasses):
     return 100 * acc, c
 
 
+
+
 def compute_classification_metrics(y_true: Tensor, y_pred: Tensor, nclasses: int) -> tuple:
     """
     Compute classification accuracy and confusion matrix.
@@ -58,51 +60,79 @@ def compute_classification_metrics(y_true: Tensor, y_pred: Tensor, nclasses: int
     return 100 * accuracy, conf_matrix
 
 
-
-def winner_prototype_indices(
-        ydata: Tensor,
-        yprotos_mat: Tensor,
-        distances: Tensor
-) -> Tensor:
+def smooth_labels(labels: Tensor, num_classes: int, epsilon: float = 0.1) -> Tensor:
     """
-    Find the closest prototypes to a batch of features.
+    Convert integer labels to smoothed probability distributions.
 
-    Parameters:
-    -----------
-    ydata : Tensor
-        Labels of input images, shape (batch_size,).
-    yprotos_mat : Tensor
-        Labels of prototypes, shape (nclass, number_of_prototypes).
-        This can be used for prototypes with the same or different labels (W^+ and W^-).
-    distances : Tensor
-        Distances between images and prototypes, shape (batch_size, number_of_prototypes).
+    Args:
+        labels (torch.Tensor): Tensor of shape (batch_size,) containing class indices.
+        num_classes (int): Total number of classes.
+        epsilon (float): Smoothing factor (0 <= ε < 1).
 
     Returns:
-    --------
-    Tensor
-        A tensor containing the indices of the winner prototypes for each image in the batch.
+        torch.Tensor: Smoothed label probabilities of shape (batch_size, num_classes).
     """
-    assert distances.ndim == 2, (f"Distances should be a matrix of shape (batch_size, number_of_prototypes), "
-                                 f"but got {distances.shape}")
+    assert 0 <= epsilon < 1, "epsilon should be between 0 and 1"
 
-    # Generate a mask for the prototypes corresponding to each image's label
-    mask = yprotos_mat[ydata]
-    # Y = yprotos_mat[ydata.tolist()]
+    batch_size = labels.size(0)
+    
+    # Start with all values = epsilon / (num_classes - 1)
+    smooth = torch.full((batch_size, num_classes), epsilon / (num_classes - 1), device=labels.device)
+    
+    # Assign 1 - epsilon to the correct class
+    smooth.scatter_(1, labels.unsqueeze(1).long(), 1.0 - epsilon)
+    
+    return smooth
 
-    # Apply the mask to distances
-    distances_sparse = distances * mask
-    # distances_sparse = distances * Y
 
-    # Find the index of the closest prototype for each image
-    winner_indices = torch.stack(
-        [
-            torch.argwhere(w).T[0,
-            torch.argmin(
-                w[torch.argwhere(w).T],
-            )
-            ] for w in torch.unbind(distances_sparse)
-        ], dim=0
-    ).T
+class ReverseKLDivLoss(nn.Module):
+    def __init__(self, reduction: str = 'batchmean', eps: float = 1e-8):
+        super().__init__()
+        self.reduction = reduction
+        self.eps = eps
 
-    return winner_indices
+    def forward(self, log_probs: torch.Tensor, soft_target: torch.Tensor) -> torch.Tensor:        
+        p_hat = torch.softmax(log_probs, dim=1)
+        p_hat = torch.clamp(p_hat, min=self.eps / soft_target.size(1))
+        p_hat = p_hat / p_hat.sum(dim=1, keepdim=True)
+        # p = torch.clamp(target, min=self.eps)
+        loss = p_hat * (torch.log(p_hat) - torch.log(soft_target))
+        if self.reduction == 'sum':
+            return loss.sum()
+        elif self.reduction == 'mean':
+            return loss.mean()
+        else:  # 'batchmean'
+            return loss.sum() / log_probs.shape[0]
 
+
+def kl_forward(u):
+    return u * torch.log(u)
+
+def Jensen_Shannon(u):
+    return 0.5 * (u * torch.log(u) - (u + 1) * torch.log(0.5 *(1 + u)))
+
+def SL(u):
+    return torch.log(2 / (1 + u)) 
+
+
+class FDivergence(nn.Module):
+    def __init__(self, reduction: str = 'batchmean', eps: float = 1e-5):
+        super().__init__()
+        self.reduction = reduction
+        self.eps = eps
+
+    def forward(self, log_probs: torch.Tensor, soft_target: torch.Tensor) -> torch.Tensor:
+        p_hat = torch.softmax(log_probs, dim=1)
+        p_hat = torch.clamp(p_hat, min=self.eps / soft_target.size(1))
+        p_hat = p_hat / p_hat.sum(dim=1, keepdim=True)
+
+        u = soft_target / p_hat
+        # loss = p_hat * kl_forward(u)
+        # loss = p_hat * Jensen_Shannon(u)
+        loss = p_hat * SL(u)
+        if self.reduction == 'sum':
+            return loss.sum()
+        elif self.reduction == 'mean':
+            return loss.mean()
+        else:  # 'batchmean'
+            return loss.sum() / log_probs.shape[0]

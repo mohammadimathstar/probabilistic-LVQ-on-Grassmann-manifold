@@ -34,6 +34,10 @@ def rotate_data(xs: Tensor,
             return rotated_xs1, rotated_xs2, Qwinners1, Qwinners2
         return rotated_xs1, rotated_xs2
 
+def rotate_prototypes(xprotos: Tensor, 
+                      rotation_matrix: Tensor):
+    return torch.matmul(xprotos.unsqueeze(0), rotation_matrix)
+
 
 
 class AnglePrototypeLayer(Function):
@@ -57,12 +61,18 @@ class AnglePrototypeLayer(Function):
         """
         output = score_fn(xs_subspace, xprotos, relevances)
         rotation_matrices = torch.matmul(output['Q'], output['Qw']) # # Qw has been already transposed (Vh)
+        rotation_matrices_data = torch.matmul(output['Qw'], torch.transpose(output['Q'], -2, -1))  # to rotate data points
 
         xs_prototype_frame = rotate_data(xs_subspace, rotation_matrices)
+        # print(xprotos.shape, rotation_matrices_data.shape)
+        prototype_rotated = rotate_prototypes(xprotos, rotation_matrices_data)
 
         ctx.score_fn = score_fn  # store the measure object
         ctx.save_for_backward(
-            xs_prototype_frame, relevances, output['canonical_correlation'])
+            xs_prototype_frame, 
+            prototype_rotated,
+            relevances, 
+            output['canonical_correlation'])
         
         return output['score'] 
     
@@ -77,16 +87,20 @@ class AnglePrototypeLayer(Function):
         Returns:
             tuple: Gradient wrt prototypes/relevances.
         """
-        x_prototype_frame, relevances, canonical_correlation = ctx.saved_tensors
+        x_prototype_frame, prototype_rotated, relevances, canonical_correlation = ctx.saved_tensors
 
         # Get the analytical gradient from your measure class
         measure = ctx.score_fn        
-        ds_dw, ds_drelevances = measure.euclidean_gradient(x_prototype_frame, canonical_correlation, relevances)  # (nbatch, nprotos, D, d), (nbatch, nprotos, d)
+        ds_dw, ds_dx, ds_drelevances = measure.euclidean_gradient(x_prototype_frame, prototype_rotated, canonical_correlation, relevances)  # (nbatch, nprotos, D, d), (nbatch, nprotos, d)
 
         grad_xs, grad_protos, grad_relevances, grad_score_fn = None, None, None, None
-        
-        grad_protos = scores_grad.unsqueeze(-1).unsqueeze(-1) * ds_dw # (nbatch, embedding_dim, subspace_dim)
-        grad_relevances = scores_grad.unsqueeze(-1) * ds_drelevances
+        if ctx.needs_input_grad[0]:
+            grad_xs_per_proto = scores_grad.unsqueeze(-1).unsqueeze(-1) * ds_dx  # we do not need the gradient wrt input data points
+            grad_xs = grad_xs_per_proto.sum(axis=1)  # sum over prototypes
+        if ctx.needs_input_grad[1]:
+            grad_protos = scores_grad.unsqueeze(-1).unsqueeze(-1) * ds_dw # (nbatch, embedding_dim, subspace_dim)
+        if ctx.needs_input_grad[2]:
+            grad_relevances = scores_grad.unsqueeze(-1) * ds_drelevances
         
         return grad_xs, grad_protos, grad_relevances, grad_score_fn
 

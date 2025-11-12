@@ -1,11 +1,11 @@
 import torch
 import argparse
 from torch.utils.data import DataLoader
-from lvq.model import Model
+from lvq.model import GrassmannLVQModel
 from util.log import Log
 
 
-def analyse_output_shape(model: Model, trainloader: DataLoader, log: Log, device):
+def analyse_output_shape(model: GrassmannLVQModel, trainloader: DataLoader, log: Log, device):
     with torch.no_grad():
         # Get a batch of training data
         xs, ys = next(iter(trainloader))
