@@ -21,6 +21,7 @@ from util.grassmann import orthogonalize_batch
 from util.log import Log
 # from util.glvq import make_soft_labels
 from util.glvq import smooth_labels
+from util.optimizer_grassmann import GrassmannOptimizer
 
 def train_epoch(
         model: GrassmannLVQModel,
@@ -61,11 +62,12 @@ def train_epoch(
     # training process (one epoch)
     for i, (xtrain, ytrain) in enumerate(trainloader):
         soft_targets = smooth_labels(ytrain, nclasses, args.epsilon)
-
-        # ****** for the first solution
-        optimizer_protos.zero_grad()
+                
+        # Reset gradients
         optimizer_rel.zero_grad()
         optimizer_net.zero_grad()
+        if isinstance(optimizer_protos, torch.optim.Optimizer):
+            optimizer_protos.zero_grad()
         
 
         xtrain, ytrain, soft_targets = xtrain.to(device), ytrain.to(device), soft_targets.to(device)
@@ -73,17 +75,49 @@ def train_epoch(
         scores = model(xtrain)
 
         log_probs = scores
-        cost = loss_fn(log_probs, ytrain)
-        # cost = loss_fn(log_probs, soft_targets)
+        # cost = loss_fn(log_probs, ytrain)
+        cost = loss_fn(log_probs, soft_targets)
         
         cost.backward()
 
-        ##### First way: using optimizers ##############
-        optimizer_protos.step()
-        optimizer_rel.step()
         optimizer_net.step()
+        optimizer_rel.step()
+
+        # Enforce constraints on relevances
         with torch.no_grad():
-            model.prototype_layer.xprotos.copy_(orthogonalize_batch(model.prototype_layer.xprotos))
+            LOW_BOUND_LAMBDA = 1e-5  # lower bound to avoid zeros
+            rel = model.prototype_layer.relevances
+
+            # Clamp to ensure nonnegativity
+            rel.clamp_(min=LOW_BOUND_LAMBDA)
+
+            # Normalize to sum to 1
+            rel /= rel.sum()
+
+
+        # ==========================
+        # 3️⃣ Prototypes
+        # ==========================
+        if isinstance(optimizer_protos, GrassmannOptimizer):
+            with torch.no_grad():
+                W = model.prototype_layer.xprotos
+                G_euclid = W.grad
+                W_new = optimizer_protos.step(W, G_euclid)
+                model.prototype_layer.xprotos.copy_(W_new)
+                W.grad.zero_()
+        else:
+            # If using standard Euclidean optimizer (SGD)
+            optimizer_protos.step()
+            # Optional: enforce orthonormality after SGD
+            with torch.no_grad():
+                model.prototype_layer.xprotos.copy_(
+                    orthogonalize_batch(model.prototype_layer.xprotos)
+                )  
+        # optimizer_protos.step()
+        # optimizer_rel.step()
+        # optimizer_net.step()
+        # with torch.no_grad():
+        #     model.prototype_layer.xprotos.copy_(orthogonalize_batch(model.prototype_layer.xprotos))
             
 
         ##### second way: manual update ##############
@@ -94,11 +128,11 @@ def train_epoch(
         #     model.prototype_layer.relevances.copy_(rel_updates)         
         
         
-        with torch.no_grad():
-            LOW_BOUND_LAMBDA = 0.0001
-            model.prototype_layer.relevances[0, torch.argwhere(model.prototype_layer.relevances < LOW_BOUND_LAMBDA)[:, 1]] = LOW_BOUND_LAMBDA
-            model.prototype_layer.relevances[:] = model.prototype_layer.relevances[
-                                                  :] / model.prototype_layer.relevances.sum()
+        # with torch.no_grad():
+        #     LOW_BOUND_LAMBDA = 0.0001
+        #     model.prototype_layer.relevances[0, torch.argwhere(model.prototype_layer.relevances < LOW_BOUND_LAMBDA)[:, 1]] = LOW_BOUND_LAMBDA
+        #     model.prototype_layer.relevances[:] = model.prototype_layer.relevances[
+        #                                           :] / model.prototype_layer.relevances.sum()
 
         # compute the accuracy
         yspred = model.prototype_layer.yprotos[scores.argmax(axis=1)]

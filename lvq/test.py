@@ -62,8 +62,8 @@ def eval(model: GrassmannLVQModel,
         yspred = model.prototype_layer.yprotos[scores.argmax(axis=1)]
         acc = torch.sum(torch.eq(yspred, ys)).item() / float(len(xs))
 
-        cost = loss(scores, ys)
-        # cost = loss(scores, soft_targets)
+        # cost = loss(scores, ys)
+        cost = loss(scores, soft_targets)
 
         # compute the confusion matrix
         acc, cmat = metrics(ys, yspred, nclasses=nclasses)

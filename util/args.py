@@ -20,20 +20,20 @@ def get_args() -> argparse.Namespace:
                         type=str,
                         # default='ETH-80',
                         # default='CUB-200-2011',
-                        default='PETS',
-                        # default='CARS',
+                        # default='PETS',
+                        default='CARS',
                         # default='BRAIN',
                         # default='MURA',
                         help='The name of dataset for training.')
     parser.add_argument('--nclasses',
                         type=int,
-                        default=37, #37, #196,
+                        default=196, #37, #196,
                         help="The number of classes."
                         )
     parser.add_argument('--net',
                         type=str,
-                        # default='resnet50',
-                        default='resnet50_inat',
+                        default='resnet50',
+                        # default='resnet50_inat',
                         # default='convnext_tiny_13',
                         help='Base network used in the tree. Pretrained network on iNaturalist is only available for '
                              'resnet50_inat (default). Others are pretrained on ImageNet. Options are: resnet18, '
@@ -92,6 +92,11 @@ def get_args() -> argparse.Namespace:
                         # default = 768,
                         help="Number of pixels in the last layer of the feature net."
                         )
+    parser.add_argument('--proto_opt',
+                        type=str,
+                        default="exp",
+                        help="The method for prototype updates on the Grassmann manifold. Options are 'exp', 'qr', or 'eucl'."
+                        )
     parser.add_argument('--dim_of_subspace',
                         type=int,
                         default=10,
@@ -104,7 +109,7 @@ def get_args() -> argparse.Namespace:
                         )
     parser.add_argument('--lr_protos',
                         type=float,
-                        default=5e-2,
+                        default=1e-2,
                         help='The learning rate for the training of the prototypes')
     parser.add_argument('--lr_rel',
                         type=float,

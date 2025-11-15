@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from torch.nn import KLDivLoss, CrossEntropyLoss
+import random, numpy as np
 
 from util.log import Log
 from util.args import get_args, save_args
@@ -27,10 +28,10 @@ def main():
     # -------------------------------------------------------------------------
     args = get_args()
 
-    torch.manual_seed(args.seed)
-    import random, numpy as np
-    random.seed(args.seed)
-    np.random.seed(args.seed)
+    # Set random seeds for reproducibility
+    # torch.manual_seed(args.seed)    
+    # random.seed(args.seed)
+    # np.random.seed(args.seed)
 
     # Choose device
     if not args.disable_cuda and torch.cuda.is_available():
@@ -68,10 +69,10 @@ def main():
     features_net, add_on_layers = get_network(num_channels, args)
     score_fn = AngleMeasure(beta=args.beta)
     
-    loss_fn = CrossEntropyLoss()
+    # loss_fn = CrossEntropyLoss()
     # loss_fn = KLDivLoss(reduction="batchmean")
     # loss_fn = ReverseKLDivLoss(reduction="batchmean", eps=args.epsilon)
-    # loss_fn = FDivergence(reduction='batchmean', eps=args.epsilon) #divergence_type='hellinger')
+    loss_fn = FDivergence(reduction='batchmean', eps=args.epsilon) #divergence_type='hellinger')
 
     model = GrassmannLVQModel(
         num_classes=len(classes),
@@ -87,6 +88,7 @@ def main():
 
     print(f"Device: {device}")
     print(f"Shape of prototypes: {model.prototype_layer.xprotos.shape}")
+    print(f"prototype update method: {args.proto_opt}")
 
     # -------------------------------------------------------------------------
     # 5️⃣  Optimizers

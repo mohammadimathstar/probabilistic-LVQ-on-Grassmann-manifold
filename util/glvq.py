@@ -112,7 +112,7 @@ def Jensen_Shannon(u):
     return 0.5 * (u * torch.log(u) - (u + 1) * torch.log(0.5 *(1 + u)))
 
 def SL(u):
-    return torch.log(2 / (1 + u)) 
+    return torch.log(torch.tensor(2.0)) - torch.log(1 + u) 
 
 
 class FDivergence(nn.Module):

@@ -13,3 +13,4 @@ pretrained_models/*
 run_prototypes*
 */__pycache__/
 features/state_dicts
+notes/*
