@@ -21,34 +21,28 @@ class PrototypeLayer(nn.Module):
         init_from_data: bool = False,
     ):
         super().__init__()
-        self.num_prototypes_per_class = args.num_of_protos
+        self.num_prototypes_per_class = 1 #args.num_of_protos
         self.embedding_dim = args.num_features
         self.subspace_dim = args.dim_of_subspace
         self.score_fn = score_fn
 
-        # Initialize prototypes randomly
-        # self.xprotos, self.yprotos, self.yprotos_mat, self.yprotos_comp_mat = init_randn(
-        #     self.embedding_dim,
-        #     self.subspace_dim,
-        #     num_of_protos=args.num_of_protos,
-        #     num_of_classes=num_classes,
-        #     device=device,
-        # )
-
+        
+        # Initialize prototypes
         if not init_from_data:
+            # Initialize prototypes randomly
             self.xprotos, self.yprotos, _, _ = init_randn(
                 self.embedding_dim,
                 self.subspace_dim,
-                num_of_protos=args.num_of_protos,
+                num_of_protos=self.num_prototypes_per_class,
                 num_of_classes=num_classes,
                 device=device,
             )
         else:
             # Just create empty placeholder (will be overwritten later)
-            self.xprotos = nn.Parameter(torch.empty(args.num_of_protos * args.nclasses, self.embedding_dim, self.subspace_dim))
+            self.xprotos = nn.Parameter(torch.empty(args.nclasses * self.num_prototypes_per_class, self.embedding_dim, self.subspace_dim))
 
         # self.num_prototypes = self.yprotos.shape[0]
-        self.num_prototypes = args.num_of_protos * args.nclasses
+        self.num_prototypes = args.nclasses
 
         # Relevance weights
         self.relevances = nn.Parameter(

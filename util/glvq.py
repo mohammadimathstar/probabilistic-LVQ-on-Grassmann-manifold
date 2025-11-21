@@ -3,6 +3,8 @@ from torch import nn, Tensor
 import argparse
 from typing import Callable
 from sklearn.metrics import confusion_matrix, accuracy_score  # f1_score
+from torch.nn import KLDivLoss, CrossEntropyLoss
+
 
 
 def metrics(y_true: Tensor, y_pred: Tensor, nclasses):
@@ -136,3 +138,21 @@ class FDivergence(nn.Module):
             return loss.mean()
         else:  # 'batchmean'
             return loss.sum() / log_probs.shape[0]
+        
+
+def get_loss_fn(args: argparse.Namespace) -> Callable[[Tensor], Tensor]:
+    """
+    Get activation function by name.
+
+    name: e.g., "relu", "leaky_relu", "elu", "selu", "tanh", "sigmoid"
+    """
+    if args.loss_fn == "ce":
+        return CrossEntropyLoss()
+    elif args.loss_fn == "kl":
+        return KLDivLoss(reduction="batchmean")
+    elif args.loss_fn == "reverse_kl":
+        return ReverseKLDivLoss(reduction="batchmean", eps=args.epsilon)
+    elif args.loss_fn == "f_divergence":
+        return FDivergence(reduction='batchmean', eps=args.epsilon) #divergence_type='hellinger')
+    else:
+        raise ValueError(f"Unsupported activation function: {args.loss_fn}")

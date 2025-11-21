@@ -5,21 +5,18 @@ import argparse
 def get_local_expl_args() -> argparse.Namespace:
 
     parser = argparse.ArgumentParser('Explain a prediction')
-    parser.add_argument('--model',
+    parser.add_argument('--model_path',
                         type=str,
-                        # default='./run_prototypes/cub200/resnet50-nat/identity/512/10d/fourth-run/checkpoints/best_test_model',
-                        # default='./run_prototypes/car/convnext-sigmoid/third/checkpoints/best_test_model',
-                        default='./run_prototypes/pets/convnext-sigmoid/512/first/checkpoints/best_test_model',
-                        # default='./run_prototypes/brain/resbet-50-v1(identity-i guess)/first-run/checkpoints/best_test_model',
-                        # default='./run_prototypes/checkpoints/best_test_model',
+                        default='./run_prototypes/',
                         help='Directory to trained model')
-    parser.add_argument('--dataset',
-                        type=str,
-                        # default='CUB-200-2011',
-                        # default='CARS',
-                        # default='BRAIN',
-                        default='PETS',
-                        help='Data set on which the model was trained')
+    
+    # parser.add_argument('--dataset',
+    #                     type=str,
+    #                     # default='CUB-200-2011',
+    #                     # default='CARS',
+    #                     default='BRAIN',
+    #                     # default='PETS',
+    #                     help='Data set on which the model was trained')
     parser.add_argument('--sample_dir',
                         type=str,
                         default='./samples',
@@ -31,9 +28,17 @@ def get_local_expl_args() -> argparse.Namespace:
     parser.add_argument('--disable_cuda',
                         action='store_true',
                         help='Flag that disables GPU usage if set')
-    parser.add_argument('--image_size',
-                        type=int,
-                        default=224,
-                        help='Resize images to this size')
+    # parser.add_argument('--image_size',
+    #                     type=int,
+    #                     default=224,
+    #                     help='Resize images to this size')
+    # parser.add_argument('--epsilon',
+    #                 type=float,
+    #                 default=1e-3,
+    #                 help='Epsilon value for FDivergence loss function')
+    # parser.add_argument('--beta',
+    #                 type=float,
+    #                 default=1.0,
+    #                 help='Beta value for the similarity measure.')
     args = parser.parse_args()
     return args

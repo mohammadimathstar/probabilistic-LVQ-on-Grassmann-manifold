@@ -6,7 +6,11 @@ import matplotlib.pyplot as plt
 import cv2
 from typing import Union
 
-from util.glvq import IdentityLoss
+from util.glvq import smooth_labels
+
+# from util.glvq import IdentityLoss
+
+
 
 
 def compute_subspace_contribution(vh, s):
@@ -48,11 +52,15 @@ def compute_regionwise_effect(M, W, rel: torch.Tensor):
     # return log_nxd_mat.sum(axis=-1)
 
 
-def compute_feature_importance(feature_map, label,
-                              vh_matrix, s_matrix, output_dict,
-                              prototype_features, proto_labels_matrix, proto_complementary_labels_matrix,
-                              relevances,
-                              return_full_output=False):
+def compute_feature_importance(feature_map, 
+                              Rt_matrix, 
+                              s_matrix, 
+                              output_dict,
+                              prototypes, 
+                              relevances,):
+                            #   loss_fn,
+                            #   args,
+                            #   return_full_output=False):
     """
     Compute the importance of each spatial region in the last layer of a feature extractor.
     For example, in ResNet50, it returns a (batch_size x 7 x 7) tensor, where 7x7 represents
@@ -75,86 +83,108 @@ def compute_feature_importance(feature_map, label,
         torch.Tensor: Principal direction effect per region.
     """
     batch_size, num_channels, width, height = feature_map.shape
+    nprotos = prototypes.shape[0]
+
+    print("feature_map", feature_map.shape, width * height)
+
+    S_inv = torch.diag_embed(1 / s_matrix)
+    Lamda = torch.diag(relevances[0])
+    H_right = torch.bmm(S_inv, Rt_matrix)
+
+    for i in range(batch_size):
+        Qt = torch.transpose(output_dict['Q'][i], -1, -2)
+        Qw = output_dict['Qw'][i]
+        V = torch.bmm(prototypes, Qw)
+        H_left = torch.bmm(torch.matmul(V, Lamda), Qt)
+        sim_grad = torch.matmul(H_left, H_right[i])
+
+        sim_grad = sim_grad.view(nprotos, num_channels, width, height)
+    
+    
+    # return sim_grad, sim_grad * feature_map
+    return torch.exp(sim_grad), torch.exp(sim_grad * feature_map)
 
     # Retrieve distance and initialize loss
-    distance_matrix = output_dict['distance']
-    loss = IdentityLoss()
+    # distance_matrix = output_dict['distance']
+    # loss = IdentityLoss()
 
     # Compute prototype match and mismatch indices
-    _, positive_idx, negative_idx = loss(label,
-                                         proto_labels_matrix,
-                                         proto_complementary_labels_matrix,
-                                         distance_matrix)
+    # soft_targets = smooth_labels(label, args.nclasses, args.epsilon)
+    
+    # _, positive_idx, negative_idx = loss_fn(label,
+    #                                      proto_labels_matrix,
+    #                                      proto_complementary_labels_matrix,
+    #                                      distance_matrix)
 
     # Extract distances of positive and negative prototypes
-    positive_distance, negative_distance = distance_matrix[0, positive_idx], distance_matrix[0, negative_idx]
+    # positive_distance, negative_distance = distance_matrix[0, positive_idx], distance_matrix[0, negative_idx]
 
-    # Store winning prototype data
-    positive_prototype = {'index': positive_idx,
-                          'Q': output_dict['Q'][0, positive_idx],
-                          'Qw': output_dict['Qw'][0, positive_idx]}
-    negative_prototype = {'index': negative_idx,
-                          'Q': output_dict['Q'][0, negative_idx],#########
-                          'Qw': output_dict['Qw'][0, negative_idx]}
+    # # Store winning prototype data
+    # positive_prototype = {'index': positive_idx,
+    #                       'Q': output_dict['Q'][0, positive_idx],
+    #                       'Qw': output_dict['Qw'][0, positive_idx]}
+    # negative_prototype = {'index': negative_idx,
+    #                       'Q': output_dict['Q'][0, negative_idx],#########
+    #                       'Qw': output_dict['Qw'][0, negative_idx]}
 
     # Classification status check
-    classification_status = 'misclassified' if positive_distance > negative_distance else 'correct'
-    print(f"\t\t\t{classification_status}: \t  {(positive_distance - negative_distance).item()}, \
-              normalized:    {((positive_distance - negative_distance) / (positive_distance + negative_distance)).item()}")
-    print(f"\t\t\tpositive_idx: {positive_idx.item()}, \
-              \t\t\t\tnegative_idx: {negative_idx.item()}")
+    # classification_status = 'misclassified' if positive_distance > negative_distance else 'correct'
+    # print(f"\t\t\t{classification_status}: \t  {(positive_distance - negative_distance).item()}, \
+    #           normalized:    {((positive_distance - negative_distance) / (positive_distance + negative_distance)).item()}")
+    # print(f"\t\t\tpositive_idx: {positive_idx.item()}, \
+    #           \t\t\t\tnegative_idx: {negative_idx.item()}")
 
-    # Process both positive and negative prototypes
-    prototype_types = ['positive', 'negative']
-    prototypes = [positive_prototype, negative_prototype]
+    # # Process both positive and negative prototypes
+    # prototype_types = ['positive', 'negative']
+    # prototypes = [positive_prototype, negative_prototype]
 
-    rotated_prototypes = {}
-    effect_dict = {}
+    # rotated_prototypes = {}
+    # effect_dict = {}
 
-    for proto_type, prototype in zip(prototype_types, prototypes):
-        # Compute contributions to subspaces
-        reconstructed_subspace = compute_subspace_contribution(vh_matrix, s_matrix)
-        principal_direction_contribution = compute_principal_direction_contribution(reconstructed_subspace,
-                                                                                    prototype['Q'])
+    # for proto_type, prototype in zip(prototype_types, prototypes):
+    #     # Compute contributions to subspaces
+    #     reconstructed_subspace = compute_subspace_contribution(vh_matrix, s_matrix)
+    #     principal_direction_contribution = compute_principal_direction_contribution(reconstructed_subspace,
+    #                                                                                 prototype['Q'])
 
-        # Rotate prototypes
-        rotated_prototype = prototype_features[prototype['index']] @ prototype['Qw']
+    #     # Rotate prototypes
+    #     rotated_prototype = prototype_features[prototype['index']] @ prototype['Qw']
 
-        # Project image features onto prototype subspace
-        reshaped_features = feature_map.view(batch_size, num_channels, width * height)
-        projection = project_features_on_prototype(reshaped_features, rotated_prototype)
+    #     # Project image features onto prototype subspace
+    #     reshaped_features = feature_map.view(batch_size, num_channels, width * height)
+    #     projection = project_features_on_prototype(reshaped_features, rotated_prototype)
 
-        # Calculate effect of hidden regions on prototypes
-        regional_effects = compute_regionwise_effect(principal_direction_contribution,
-                                                    projection, relevances)
+    #     # Calculate effect of hidden regions on prototypes
+    #     regional_effects = compute_regionwise_effect(principal_direction_contribution,
+    #                                                 projection, relevances)
 
-        # Reshape back to spatial dimensions
-        regional_effects = torch.reshape(
-            torch.permute(regional_effects, dims=(0, 2, 1)),
-            (batch_size, -1, width, height)
-        )
+    #     # Reshape back to spatial dimensions
+    #     regional_effects = torch.reshape(
+    #         torch.permute(regional_effects, dims=(0, 2, 1)),
+    #         (batch_size, -1, width, height)
+    #     )
 
-        # Store results
-        effect_dict[proto_type] = {
-            'regional_effects_on_principal_directions': regional_effects
-        }
-        rotated_prototypes[proto_type] = rotated_prototype
+    #     # Store results
+    #     effect_dict[proto_type] = {
+    #         'regional_effects_on_principal_directions': regional_effects
+    #     }
+    #     rotated_prototypes[proto_type] = rotated_prototype
 
-    # Calculate difference in regional effects between positive and negative prototypes
-    region_effect_per_principal_direction = (
-            effect_dict['positive']['regional_effects_on_principal_directions'] -
-            effect_dict['negative']['regional_effects_on_principal_directions']
-    ).squeeze()
+    # # Calculate difference in regional effects between positive and negative prototypes
+    # region_effect_per_principal_direction = (
+    #         effect_dict['positive']['regional_effects_on_principal_directions'] -
+    #         effect_dict['negative']['regional_effects_on_principal_directions']
+    # ).squeeze()
 
-    region_effect_on_decision = region_effect_per_principal_direction.sum(axis=-3)
+    # region_effect_on_decision = region_effect_per_principal_direction.sum(axis=-3)
 
-    # Return results
-    if return_full_output:
-        return (region_effect_on_decision, region_effect_per_principal_direction,
-                effect_dict['positive']['regional_effects_on_principal_directions'],
-                effect_dict['negative']['regional_effects_on_principal_directions'])
-    else:
-        return region_effect_on_decision, region_effect_per_principal_direction
+    # # Return results
+    # if return_full_output:
+    #     return (region_effect_on_decision, region_effect_per_principal_direction,
+    #             effect_dict['positive']['regional_effects_on_principal_directions'],
+    #             effect_dict['negative']['regional_effects_on_principal_directions'])
+    # else:
+    #     return region_effect_on_decision, region_effect_per_principal_direction
 
 
 
@@ -170,6 +200,8 @@ def save_feature_importance_heatmap(
         effect_map_np = effect_map
     rescaled_map = (effect_map_np - np.amin(effect_map_np))
     rescaled_map = rescaled_map / (np.amax(rescaled_map) + 1e-8)
+
+    print(rescaled_map.shape)
 
     # Apply colormap to create heatmap
     heatmap = cv2.applyColorMap(np.uint8(255 * rescaled_map), cv2.COLORMAP_JET)

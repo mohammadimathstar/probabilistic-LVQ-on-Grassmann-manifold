@@ -9,7 +9,7 @@ import torch
 
 from typing import List
 
-from lvq.model import Model
+from lvq.model import GrassmannLVQModel
 
 
 def k_largest_index_argsort(a, k):
@@ -105,12 +105,16 @@ def plot_important_region_per_principal_direction(
 
 
 
-def compute_feature_importance_heatmap(model: Model,
+def compute_feature_importance_heatmap(model: GrassmannLVQModel,
                  img_names: List,
                  imgs_transformed: torch.Tensor,
                  labels,
                  logger,
-                 args):
+                 args,
+                #  loss_fn
+                 ):
+    
+    img_size = args.__dict__.get('image_size', 224)
 
     OUTPUT_DIR = args.results_dir
 
@@ -126,23 +130,27 @@ def compute_feature_importance_heatmap(model: Model,
 
         image = cv2.imread(INPUT_PATH)
 
-        image_resized = cv2.resize(image, (args.image_size, args.image_size),
+        image_resized = cv2.resize(image, (img_size, img_size),
                                    interpolation=cv2.INTER_LINEAR)
 
         images_resized.append(image)
 
         with (torch.no_grad()):
-            feature, subspace, Vh, S, output = model.forward_partial(sample.unsqueeze(0))
+            feature, subspace, Rt, S, output = model.forward_partial(sample.unsqueeze(0))
+            # print("features", feature.shape, subspace.shape, S.shape, Rt.shape, output['Q'].shape, output['Qw'].shape)
+            # print(torch.diag(S[0]))
 
-            region_heatmap, region_heatmap_per_principal_dir = compute_feature_importance(
-                feature, label, Vh, S, output,
+            # region_heatmap, region_heatmap_per_principal_dir = 
+
+            region_heatmaps, region_heatmaps_times_feature_map = compute_feature_importance(
+                feature, Rt, S, output,
                 model.prototype_layer.xprotos,
-                model.prototype_layer.yprotos_mat,
-                model.prototype_layer.yprotos_comp_mat,
                 model.prototype_layer.relevances,
-                return_full_output=False
             )
-
+            
+        # region_heatmap = region_heatmaps_times_feature_map[label].sum(axis=0)
+        region_heatmap = region_heatmaps[label].sum(axis=0)
+        print(region_heatmap.shape)
         save_feature_importance_heatmap(region_heatmap, output_path=HEATMAP_PATH)
         logger.info(f"The importance of regions (of '{img_name}') has been completed!")
         logger.info(f"Its heatmap has been saved in '{HEATMAP_PATH}'.")
@@ -150,7 +158,7 @@ def compute_feature_importance_heatmap(model: Model,
         # Resize to image size and save the (upsampled) heatmap
         heatmap_upsampled = cv2.resize(
             region_heatmap.numpy(),
-            dsize=(args.image_size, args.image_size), #(sample_array.shape[1], sample_array.shape[0]),
+            dsize=(img_size, img_size), #(sample_array.shape[1], sample_array.shape[0]),
             interpolation=cv2.INTER_CUBIC
         )
 
@@ -165,13 +173,12 @@ def compute_feature_importance_heatmap(model: Model,
 
         logger.info(f"The image with its heatmap has been saved in '{OVERLAY_PATH}'.\n")
 
-        region_effect_maps_per_principal_direction.append(
-            region_heatmap_per_principal_dir
-        )
-
-    return (
-        torch.stack(region_effect_maps_per_principal_direction, dim=0),
-        images_resized
-    )
+        # region_effect_maps_per_principal_direction.append(
+        #     region_heatmap_per_principal_dir
+        # )
+    # return (
+    #     torch.stack(region_effect_maps_per_principal_direction, dim=0),
+    #     images_resized
+    # )
 
 

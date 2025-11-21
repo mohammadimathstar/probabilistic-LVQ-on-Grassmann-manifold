@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from torch.nn import KLDivLoss, CrossEntropyLoss
+
 import random, numpy as np
 
 from util.log import Log
@@ -10,12 +10,14 @@ from util.net import get_network, freeze
 from util.save import *
 from util.analyse import analyse_output_shape
 from util.optimizer_sgd import get_optimizer
+from util.glvq import get_loss_fn
+from util.load_model import load_grassmannlvq_model
 
 from lvq.model import GrassmannLVQModel
 from lvq.train import train_epoch
 from lvq.test import eval
 from lvq.measures.angle_measure import AngleMeasure
-from util.glvq import ReverseKLDivLoss, FDivergence
+
 
 def check_device_consistency(model):
     devices = {p.device for p in model.parameters()}
@@ -54,48 +56,37 @@ def main():
     log_loss = f"{log_prefix}_losses"
     log.create_log(log_loss, 'epoch', 'batch', 'loss', 'batch_train_acc')
 
-    # Save all arguments
-    save_args(args, log.metadata_dir)
-
+    
     # -------------------------------------------------------------------------
     # 3️⃣  Dataset & Dataloaders
     # -------------------------------------------------------------------------
     trainloader, testloader, classes, num_channels = get_dataloaders(args)
-    print(f"Num classes (k) = {len(classes)}", flush=True)
+    args.num_channels = num_channels
 
     # -------------------------------------------------------------------------
     # 4️⃣  Network & Model Setup
-    # -------------------------------------------------------------------------
-    features_net, add_on_layers = get_network(num_channels, args)
-    score_fn = AngleMeasure(beta=args.beta)
-    
-    # loss_fn = CrossEntropyLoss()
-    # loss_fn = KLDivLoss(reduction="batchmean")
-    # loss_fn = ReverseKLDivLoss(reduction="batchmean", eps=args.epsilon)
-    loss_fn = FDivergence(reduction='batchmean', eps=args.epsilon) #divergence_type='hellinger')
+    # -------------------------------------------------------------------------    
+    model, _ = load_grassmannlvq_model(args=args, 
+                                        device=device,                                        
+                                        init_from_data=True if args.proto_init=="data" else False,
+                                        trainloader=trainloader,)  # 👈 Use real data for prototype initialization
 
-    model = GrassmannLVQModel(
-        num_classes=len(classes),
-        feature_extractor=features_net,
-        score_fn=score_fn,
-        args=args,
-        add_on_layers=add_on_layers if args.num_features > 0 else nn.Identity(),
-        device=device,
-        init_from_data=False,     # 👈 Use real data for prototype initialization
-        dataloader=trainloader,  # 👈 Pass train loader
-    )
-    model = model.to(device=device)
-
-    print(f"Device: {device}")
     print(f"Shape of prototypes: {model.prototype_layer.xprotos.shape}")
     print(f"prototype update method: {args.proto_opt}")
+
+    # Loss function
+    loss_fn = get_loss_fn(args)
 
     # -------------------------------------------------------------------------
     # 5️⃣  Optimizers
     # -------------------------------------------------------------------------
     optimizer_net, optimizer_proto, optimizer_rel, params_to_freeze, params_to_train = get_optimizer(model, args)
 
+    # Save initial model state
     model.save_state(f"{log.checkpoint_dir}/model_init")
+
+    # Save all arguments
+    save_args(args, log.metadata_dir)
 
     analyse_output_shape(model, trainloader, log, device)
 

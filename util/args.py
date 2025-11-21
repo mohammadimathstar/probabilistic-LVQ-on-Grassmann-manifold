@@ -19,27 +19,32 @@ def get_args() -> argparse.Namespace:
     parser.add_argument('--dataset',
                         type=str,
                         # default='ETH-80',
-                        # default='CUB-200-2011',
+                        default='CUB-200-2011',
                         # default='PETS',
-                        default='CARS',
+                        # default='CARS',
                         # default='BRAIN',
                         # default='MURA',
                         help='The name of dataset for training.')
     parser.add_argument('--nclasses',
                         type=int,
-                        default=196, #37, #196,
+                        default=200, #37, #196,
                         help="The number of classes."
                         )
     parser.add_argument('--net',
                         type=str,
-                        default='resnet50',
-                        # default='resnet50_inat',
+                        # default='resnet50',
+                        default='resnet50_inat',
                         # default='convnext_tiny_13',
                         help='Base network used in the tree. Pretrained network on iNaturalist is only available for '
                              'resnet50_inat (default). Others are pretrained on ImageNet. Options are: resnet18, '
                              'resnet34, resnet50, resnet50_inat, resnet101, resnet152, densenet121, densenet169, '
                              'densenet201, densenet161, vgg11, vgg13, vgg16, vgg19, vgg11_bn, vgg13_bn, vgg16_bn or '
                              'vgg19_bn')
+    parser.add_argument('--loss_fn',
+                        type=str,
+                        default="ce",
+                        help="The loss function to use. Options are 'ce', 'kl', 'reverse_kl', 'f_divergence', etc."
+                        )
     parser.add_argument('--epsilon',
                         type=float,
                         default=0.001,
@@ -49,12 +54,13 @@ def get_args() -> argparse.Namespace:
                         type=float,
                         default=1.0,
                         help="The hyperparameter for the scoring function (related to temperature)."
-                        )
+                        )    
     parser.add_argument('--seed',
                         type=int,
                         default=42,
                         help="The random seed for initialization."
                         )
+    # Training hyperparameters
     parser.add_argument('--batch_size_train',
                         type=int,
                         default=16,
@@ -68,6 +74,18 @@ def get_args() -> argparse.Namespace:
                         default=1000,
                         help='The number of epochs to train the prototypes.')
 
+    # Prototype layer hyperparameters
+    parser.add_argument('--num_features',
+                        type=int,
+                        default=512, # 512
+                        help='Depth of the prototype and therefore also depth of convolutional output')
+    
+    parser.add_argument('--depth_of_net_last_layer',
+                        type=int,
+                        default=2048,
+                        # default = 768,
+                        help="Number of pixels in the last layer of the feature net."
+                        )
     parser.add_argument('--W1',
                         type=int,
                         default=1,
@@ -76,26 +94,11 @@ def get_args() -> argparse.Namespace:
                         type=int,
                         default=1,
                         help='Height of the prototype. Correct behaviour of the model with H1 != 1 is not guaranteed')
-    parser.add_argument('--num_features',
-                        type=int,
-                        default=512, # 512
-                        # default=128,
-                        help='Depth of the prototype and therefore also depth of convolutional output')
-    parser.add_argument('--num_of_protos',
-                        type=int,
-                        default=1,
-                        help="The number of prototypes per class."
-                        )
-    parser.add_argument('--depth_of_net_last_layer',
-                        type=int,
-                        default=2048,
-                        # default = 768,
-                        help="Number of pixels in the last layer of the feature net."
-                        )
-    parser.add_argument('--proto_opt',
+    
+    parser.add_argument('--proto_init',
                         type=str,
-                        default="exp",
-                        help="The method for prototype updates on the Grassmann manifold. Options are 'exp', 'qr', or 'eucl'."
+                        default="random",
+                        help="The method for prototype initialization. Options are 'random', 'data', etc."
                         )
     parser.add_argument('--dim_of_subspace',
                         type=int,
@@ -107,21 +110,27 @@ def get_args() -> argparse.Namespace:
                         default=1,
                         help="The number of times of d (for svd decomposition = coef x d)."
                         )
+    # Optimization hyperparameters
+    parser.add_argument('--proto_opt',
+                        type=str,
+                        default="exp",
+                        help="The method for prototype updates on the Grassmann manifold. Options are 'exp', 'qr', or 'eucl'."
+                        )
     parser.add_argument('--lr_protos',
                         type=float,
-                        default=1e-2,
+                        default=1e-2, #5e-2,
                         help='The learning rate for the training of the prototypes')
     parser.add_argument('--lr_rel',
                         type=float,
-                        default=1e-6,#1e-6,
+                        default=1e-5,#1e-6,
                         help='The learning rate for the training of the relevances.')
     parser.add_argument('--lr_block',
                         type=float,
-                        default=1e-4, #1e-4
+                        default=5e-5, #1e-4
                         help='The optimizer learning rate for training the 1x1 conv layer and last conv layer of the underlying neural network (applicable to resnet50 and densenet121)')
     parser.add_argument('--freeze_epochs',
                         type=int,
-                        default=10,
+                        default=20,
                         help='Number of epochs where pretrained features_net will be frozen.'
                         )
     parser.add_argument('--lr_net',
@@ -132,14 +141,6 @@ def get_args() -> argparse.Namespace:
                         type=float,
                         default=0.9,
                         help='The optimizer momentum parameter (only applicable to SGD)')
-    parser.add_argument('--milestones',
-                        type=str,
-                        default='',
-                        help='The milestones for the MultiStepLR learning rate scheduler')
-    parser.add_argument('--gamma',
-                        type=float,
-                        default=0.5,
-                        help='The gamma for the MultiStepLR learning rate scheduler. Needs to be 0<=gamma<=1')
     parser.add_argument('--weight_decay',
                         type=float,
                         default=0.0,
@@ -151,21 +152,6 @@ def get_args() -> argparse.Namespace:
                         type=str,
                         default='./run_prototypes',
                         help='The directory in which train progress should be logged')
-    parser.add_argument('--state_dict_dir_net',
-                        type=str,
-                        default='',
-                        help='The directory containing a state dict with a pretrained backbone network')
-    parser.add_argument('--state_dict_dir_prototype',
-                        type=str,
-                        default='',
-                        help='The directory containing a state dict (checkpoint) with a pretrained prototype. Note '
-                             'that training further from a checkpoint does not seem to work correctly. Evaluating a '
-                             'trained prototype does work.')
-    
-    parser.add_argument('--dir_for_saving_images',
-                        type=str,
-                        default='upsampling_results',
-                        help='Directoy for saving the prototypes, patches and heatmaps.')
     parser.add_argument('--disable_pretrained',
                         action='store_true',
                         help='When set, the backbone network is initialized with random weights instead of being '
@@ -174,22 +160,9 @@ def get_args() -> argparse.Namespace:
                         )
 
     args = parser.parse_args()
-    args.milestones = get_milestones(args)
+    
     return args
 
-
-def get_milestones(args: argparse.Namespace):
-    """
-    Parse the milestones argument to get a list
-    :param args: The arguments given
-    """
-    if args.milestones != '':
-        milestones_list = args.milestones.split(',')
-        for m in range(len(milestones_list)):
-            milestones_list[m]=int(milestones_list[m])
-    else:
-        milestones_list = []
-    return milestones_list
 
 
 def save_args(args: argparse.Namespace, directory_path: str) -> None:

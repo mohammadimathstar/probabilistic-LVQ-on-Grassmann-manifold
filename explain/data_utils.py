@@ -24,12 +24,13 @@ def create_image_transform(args: argparse.Namespace) -> transforms.Compose:
     """
     Create a preprocessing pipeline for image transformation.
     """
+    img_size = args.__dict__.get('image_size', 224)
     mean = (0.485, 0.456, 0.406)
     std = (0.229, 0.224, 0.225)
     normalize = transforms.Normalize(mean=mean, std=std)
 
     transform_pipeline = transforms.Compose([
-        transforms.Resize(size=(args.image_size, args.image_size)),
+        transforms.Resize(size=(img_size, img_size)),
         transforms.ToTensor(),
         normalize
     ])
@@ -50,6 +51,8 @@ def extract_class_from_filename(filename: str, args: argparse.Namespace) -> str:
         return dic[filename[3:5]]
     elif args.dataset == 'PETS':
         return "_".join(filename.split("_")[:-1])
+    elif args.dataset == 'MURA':
+        return filename.split("_")[2].split("-")[0]
     else:
         raise ValueError(f"Invalid dataset name provided: {args.dataset}")
 
@@ -73,14 +76,14 @@ def process_images(args: argparse.Namespace,
         # Extract class name from the image filename
         class_name = extract_class_from_filename(filename, args)
 
-        # print(class_name)
-
         # Get the corresponding class index
         image_labels.append(label_to_index[class_name.lower()])
 
         # Load and transform the image
         image_path = os.path.join(images_dir, filename)
         image = Image.open(image_path)
+        if args.dataset == 'MURA':
+            image = image.convert("RGB")
         processed_images.append(transform(image))
         image_filenames.append(filename)
 

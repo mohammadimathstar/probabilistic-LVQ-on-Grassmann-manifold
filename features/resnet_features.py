@@ -9,8 +9,8 @@ model_urls = {
     'resnet18': 'https://download.pytorch.org/models/resnet18-5c106cde.pth',
     'resnet34': 'https://download.pytorch.org/models/resnet34-333f7ec4.pth',
     # 'resnet50': 'https://download.pytorch.org/models/resnet50-19c8e357.pth', # Meike
-    'resnet50': 'https://download.pytorch.org/models/resnet50-0676ba61.pth', #v1
-    # 'resnet50': 'https://download.pytorch.org/models/resnet50-11ad3fa6.pth', #v2
+    # 'resnet50': 'https://download.pytorch.org/models/resnet50-0676ba61.pth', #v1
+    'resnet50': 'https://download.pytorch.org/models/resnet50-11ad3fa6.pth', #v2
     'resnet101': 'https://download.pytorch.org/models/resnet101-5d3b4d8f.pth',
     'resnet152': 'https://download.pytorch.org/models/resnet152-b121ed2d.pth',
 }

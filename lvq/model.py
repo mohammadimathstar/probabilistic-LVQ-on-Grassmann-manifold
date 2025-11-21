@@ -19,7 +19,6 @@ class GrassmannLVQModel(nn.Module):
     """
     def __init__(
         self,
-        num_classes: int,
         feature_extractor: torch.nn.Module,
         score_fn: GrassmannMeasureBase,
         args: argparse.Namespace,
@@ -30,9 +29,10 @@ class GrassmannLVQModel(nn.Module):
     ):
         super().__init__()
 
-        self.num_classes = num_classes
+        self.num_classes = args.nclasses
         self.feature_extractor = feature_extractor
         self.add_on_layers = add_on_layers
+        self.coef_dim_of_subspace = args.coef_dim_of_subspace
 
         # Create the prototype layer
         self.prototype_layer = PrototypeLayer(
@@ -47,12 +47,6 @@ class GrassmannLVQModel(nn.Module):
         # Optionally initialize prototypes from real data
         if init_from_data and dataloader is not None:
             self.initialize_prototypes_from_data(dataloader, device)
-
-        # Check if prototypes require gradients
-        print(self.prototype_layer.xprotos.requires_grad)
-
-        
-
 
 
     # -------------------------------------------------------------------------
@@ -84,7 +78,8 @@ class GrassmannLVQModel(nn.Module):
         features = self.feature_extractor(inputs)
         features = self.add_on_layers(features)
 
-        subspaces = grassmann_repr(features, self.prototype_layer.subspace_dim)
+        subspaces = grassmann_repr(features, 
+                                   self.prototype_layer.subspace_dim * self.coef_dim_of_subspace)
         scores = self.prototype_layer(subspaces)
         return scores
 

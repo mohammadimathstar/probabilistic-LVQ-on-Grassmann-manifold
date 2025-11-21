@@ -75,8 +75,10 @@ def train_epoch(
         scores = model(xtrain)
 
         log_probs = scores
-        # cost = loss_fn(log_probs, ytrain)
-        cost = loss_fn(log_probs, soft_targets)
+        if args.loss_fn == 'ce':
+            cost = loss_fn(log_probs, ytrain)
+        else:
+            cost = loss_fn(log_probs, soft_targets)
         
         cost.backward()
 

@@ -14,3 +14,7 @@ run_prototypes*
 */__pycache__/
 features/state_dicts
 notes/*
+*.log
+*.log.*
+samples/*
+explanations/*
