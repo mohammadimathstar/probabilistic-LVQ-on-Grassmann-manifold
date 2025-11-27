@@ -57,59 +57,93 @@ def extract_class_from_filename(filename: str, args: argparse.Namespace) -> str:
         raise ValueError(f"Invalid dataset name provided: {args.dataset}")
 
 
-def process_images(args: argparse.Namespace,
-                   transform: transforms.Compose,
-                   class_mapping: dict,
-                   logger: logging.Logger):
+def get_image_files(args: argparse.Namespace, class_mapping: dict):
     """
-    Process images by applying transformations and saving results.
+    Get list of image files with their labels.
+    
+    Returns:
+        list of tuples: (filename, label_index, class_name)
     """
     images_dir = os.path.join(args.sample_dir, args.dataset)
     label_to_index = {label.lower(): idx for idx, label in class_mapping.items()}
-
-    processed_images = []
-    image_filenames = []
-    image_labels = []
-
-    # Iterate through all images in the dataset directory
-    for filename in os.listdir(images_dir):
+    
+    image_info_list = []
+    
+    for filename in sorted(os.listdir(images_dir)):
+        if not filename.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.tiff')):
+            continue
+            
         # Extract class name from the image filename
         class_name = extract_class_from_filename(filename, args)
-
+        
         # Get the corresponding class index
-        image_labels.append(label_to_index[class_name.lower()])
-
-        # Load and transform the image
-        image_path = os.path.join(images_dir, filename)
-        image = Image.open(image_path)
-        if args.dataset == 'MURA':
-            image = image.convert("RGB")
-        processed_images.append(transform(image))
-        image_filenames.append(filename)
-
-        # Save the processed image in the appropriate results folder
-        image_basename = os.path.splitext(filename)[0]
-        destination_folder = os.path.join(args.results_dir, image_basename)
-        os.makedirs(destination_folder, exist_ok=True)
-
-        image.save(os.path.join(destination_folder, filename))
-
-    # Stack images into a single tensor
-    processed_images = torch.stack(processed_images, dim=0)
-    image_labels = torch.tensor(image_labels, dtype=torch.int64)
-
-    logger.info(f"Processed {processed_images.shape[0]} images and saved results to '{args.results_dir}'.\n")
-
-    return image_filenames, image_labels, processed_images
+        label_idx = label_to_index[class_name.lower()]
+        
+        image_info_list.append((filename, label_idx, class_name))
+    
+    return image_info_list
 
 
-def load_and_process_images(args: argparse.Namespace, logger: logging.Logger):
+def process_single_image(filename: str, 
+                        label_idx: int,
+                        args: argparse.Namespace,
+                        transform: transforms.Compose,
+                        logger: logging.Logger):
     """
-    Load class mappings, create preprocessing pipeline, and process images.
+    Process a single image and save it to the results directory.
+    
+    Args:
+        filename: Image filename
+        label_idx: Class label index
+        args: Arguments namespace
+        transform: Image transformation pipeline
+        logger: Logger instance
+    
+    Returns:
+        tuple: (filename, label_tensor, transformed_image_tensor, original_image)
+    """
+    images_dir = os.path.join(args.sample_dir, args.dataset)
+    image_path = os.path.join(images_dir, filename)
+    
+    # Load image
+    image = Image.open(image_path)
+    if args.dataset == 'MURA':
+        image = image.convert("RGB")
+    
+    # Transform image
+    transformed_image = transform(image)
+    
+    # Save the original image in the results folder
+    image_basename = os.path.splitext(filename)[0]
+    destination_folder = os.path.join(args.results_dir, image_basename)
+    os.makedirs(destination_folder, exist_ok=True)
+    image.save(os.path.join(destination_folder, filename))
+    
+    # Convert label to tensor
+    label_tensor = torch.tensor(label_idx, dtype=torch.int64)
+    
+    logger.info(f"Loaded image: {filename} (class: {label_idx})")
+    
+    return filename, label_tensor, transformed_image, image
+
+
+def load_and_process_images_generator(args: argparse.Namespace, logger: logging.Logger):
+    """
+    Generator that yields images one-by-one.
+    
+    Yields:
+        tuple: (filename, label_tensor, transformed_image_tensor, original_image)
     """
     class_mapping = load_class_mapping(args)
     transform_pipeline = create_image_transform(args)
-
-    return process_images(args, transform_pipeline, class_mapping, logger)
+    
+    # Get all image files
+    image_info_list = get_image_files(args, class_mapping)
+    
+    logger.info(f"Found {len(image_info_list)} images to process.\n")
+    
+    # Yield images one by one
+    for filename, label_idx, class_name in image_info_list:
+        yield process_single_image(filename, label_idx, args, transform_pipeline, logger)
 
 
