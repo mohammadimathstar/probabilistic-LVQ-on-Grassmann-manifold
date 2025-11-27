@@ -42,7 +42,7 @@ def get_args() -> argparse.Namespace:
                              'vgg19_bn')
     parser.add_argument('--loss_fn',
                         type=str,
-                        default="ce",
+                        default="reverse_kl",
                         help="The loss function to use. Options are 'ce', 'kl', 'reverse_kl', 'f_divergence', etc."
                         )
     parser.add_argument('--epsilon',
@@ -126,16 +126,16 @@ def get_args() -> argparse.Namespace:
                         help='The learning rate for the training of the relevances.')
     parser.add_argument('--lr_block',
                         type=float,
-                        default=5e-5, #1e-4
+                        default=1e-4, #1e-4
                         help='The optimizer learning rate for training the 1x1 conv layer and last conv layer of the underlying neural network (applicable to resnet50 and densenet121)')
     parser.add_argument('--freeze_epochs',
                         type=int,
-                        default=20,
+                        default=5,
                         help='Number of epochs where pretrained features_net will be frozen.'
                         )
     parser.add_argument('--lr_net',
                         type=float,
-                        default=1e-6, #1e-5
+                        default=1e-7, #1e-5
                         help='The optimizer learning rate for the underlying neural network')
     parser.add_argument('--momentum',
                         type=float,

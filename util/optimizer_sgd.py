@@ -67,6 +67,7 @@ def get_optimizer(model, args: argparse.Namespace):
     # ====================================
     opt_net = torch.optim.Adam(net_paramlist)
     opt_rel = torch.optim.Adam(rel_paramlist)
+    # opt_rel = torch.optim.SGD(rel_paramlist)
 
     # ====================================
     # 3. Construct Grassmann optimizer
