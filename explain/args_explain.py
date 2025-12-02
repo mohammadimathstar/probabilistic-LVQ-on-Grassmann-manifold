@@ -10,13 +10,14 @@ def get_local_expl_args() -> argparse.Namespace:
                         default='./run_prototypes/',
                         help='Directory to trained model')
     
-    # parser.add_argument('--dataset',
-    #                     type=str,
-    #                     # default='CUB-200-2011',
-    #                     # default='CARS',
-    #                     default='BRAIN',
-    #                     # default='PETS',
-    #                     help='Data set on which the model was trained')
+    parser.add_argument('--k_negatives',
+                        type=int,
+                        default=0,
+                        help='Number of negative prototypes to consider')
+    parser.add_argument('--k_nearest',
+                        type=int,
+                        default=2,
+                        help='Number of nearest feature positions (per principal direction) to consider')
     parser.add_argument('--sample_dir',
                         type=str,
                         default='./samples',

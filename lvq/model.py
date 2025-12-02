@@ -1,5 +1,5 @@
 import argparse
-from xml.parsers.expat import model
+# from xml.parsers.expat import model
 import numpy as np
 import os
 import torch
@@ -99,6 +99,11 @@ class GrassmannLVQModel(nn.Module):
         )
 
         return features, subspaces, Vh, S, output
+    
+    def score_from_image(self, image, target_class):
+        logits = self.forward(image)          # shape [1, C]
+        return logits[0, target_class]
+
 
     # -------------------------------------------------------------------------
     # Prototype initialization from real data

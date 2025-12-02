@@ -42,7 +42,7 @@ def get_args() -> argparse.Namespace:
                              'vgg19_bn')
     parser.add_argument('--loss_fn',
                         type=str,
-                        default="reverse_kl",
+                        default="ce",
                         help="The loss function to use. Options are 'ce', 'kl', 'reverse_kl', 'f_divergence', etc."
                         )
     parser.add_argument('--epsilon',
@@ -102,7 +102,7 @@ def get_args() -> argparse.Namespace:
                         )
     parser.add_argument('--dim_of_subspace',
                         type=int,
-                        default=10,
+                        default=5,
                         help="The dimensionality of subspaces 'd'."
                         )
     parser.add_argument('--coef_dim_of_subspace',

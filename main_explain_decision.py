@@ -9,10 +9,9 @@ import torch
 import torchvision.transforms as transforms
 
 from lvq.model import GrassmannLVQModel
-from explain.feature_importance import (
-    compute_feature_importance_heatmap, plot_important_region_per_principal_direction)
+from explain.feature_importance import compute_feature_importance_heatmap
 from explain.args_explain import get_local_expl_args
-from explain.data_utils import load_and_process_images
+from explain.data_utils import load_and_process_images_generator
 
 from util.glvq import FDivergence
 from util.load_model import load_grassmannlvq_model
@@ -24,12 +23,17 @@ from util.load_model import load_grassmannlvq_model
 logger = logging.getLogger("ExplainAPI")
 logger.setLevel(logging.INFO)
 
-fomatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 file_handler = RotatingFileHandler(
     filename='./explanations.log', maxBytes=10000, backupCount=1
 )
-file_handler.setFormatter(fomatter)
+file_handler.setFormatter(formatter)
 logger.addHandler(file_handler)
+
+# Also add console handler for real-time feedback
+console_handler = logging.StreamHandler()
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
 
 
 
@@ -37,6 +41,7 @@ logger.addHandler(file_handler)
 def explain_decision(args: argparse.Namespace):
     """
     Explain model decisions by computing feature importance and visualizing regions of interest.
+    Processes images one-by-one instead of batching.
     """
     
     # Load the trained model
@@ -45,30 +50,39 @@ def explain_decision(args: argparse.Namespace):
         checkpoint_path=args.model_path + 'checkpoints/best_test_model',
     )
 
-    # model = GrassmannLVQModel.load(args.model)
+    # Transfer model arguments to args
     for k, v in model_args.__dict__.items():
         setattr(args, k, v)
-
-    # Define loss function for explanation
-    # loss_fn = FDivergence(reduction='batchmean', eps=args.epsilon)
+    args.image_size = 224 #model_args.image_size
 
     # Create results directory if it doesn't exist
     os.makedirs(args.results_dir, exist_ok=True)
 
     # Update results directory path to include dataset name
     args.results_dir = os.path.join(args.results_dir, args.dataset)
-    # os.makedirs(args.results_dir, exist_ok=True)
+    
+    logger.info(f"Starting explanation process for dataset: {args.dataset}")
+    logger.info(f"Model loaded from: {args.model_path}")
+    logger.info(f"Results will be saved to: {args.results_dir}")
+    logger.info(f"Number of classes: {args.nclasses}")
+    logger.info(f"Number of prototypes: {model.prototype_layer.xprotos.shape[0]}\n")
 
-    # Process images and obtain transformed data
-    images_names, labels, transformed_images = load_and_process_images(args, logger)
+    # Create image generator for one-by-one processing
+    image_generator = load_and_process_images_generator(args, logger)
+    # print(image_generator)
+    # filename, label_tensor, transformed_image, image = next(image_generator)
+    # print(filename, label_tensor)
+    # print(image)
 
-    # Compute feature importance heatmap
+    # Compute feature importance heatmap for each image
     compute_feature_importance_heatmap(
-        model, images_names, transformed_images, labels, logger, args)
-
-    # Plot and save important regions per principal direction
-    # plot_important_region_per_principal_direction(
-    #     imgs, region_importance_per_principal_dir, images_names, args, 1)
+        model=model, 
+        image_generator=image_generator, 
+        logger=logger, 
+        args=args
+    )
+    
+    # logger.info("Explanation process completed successfully!")
 
 
 

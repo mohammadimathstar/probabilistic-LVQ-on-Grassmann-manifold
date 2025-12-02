@@ -156,9 +156,10 @@ def init_randn(
     # Initialize prototypes using QR decomposition for orthogonalization
     Q, _ = torch.linalg.qr(
         # 0.5 + 0.1 * torch.randn(prototype_shape, device=device),
-        0.1 * torch.randn(prototype_shape, device=device),
+        0.1 * torch.randn(prototype_shape, device=device), # this one was used in previous experiments
         mode='reduced')
-    xprotos = nn.Parameter(Q)
+    scale = np.sqrt(2.0 / dim_of_subspace)
+    xprotos = nn.Parameter(Q * scale)
 
     # Set prototypes' labels
     yprotos = torch.repeat_interleave(classes, num_of_protos).to(torch.int32)

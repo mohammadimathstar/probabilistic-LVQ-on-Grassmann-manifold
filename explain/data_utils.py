@@ -7,6 +7,7 @@ import argparse
 import os
 from PIL import Image
 import pickle
+import cv2
 
 
 def load_class_mapping(args: argparse.Namespace) -> dict:
@@ -112,12 +113,15 @@ def process_single_image(filename: str,
     
     # Transform image
     transformed_image = transform(image)
+    # image_resized = cv2.resize(image, (args.image_size, args.image_size),
+    #                                interpolation=cv2.INTER_LINEAR)
     
     # Save the original image in the results folder
     image_basename = os.path.splitext(filename)[0]
     destination_folder = os.path.join(args.results_dir, image_basename)
     os.makedirs(destination_folder, exist_ok=True)
     image.save(os.path.join(destination_folder, filename))
+    # image_resized.save(os.path.join(destination_folder, f"resized_{filename}"))
     
     # Convert label to tensor
     label_tensor = torch.tensor(label_idx, dtype=torch.int64)
