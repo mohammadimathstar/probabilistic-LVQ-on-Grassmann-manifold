@@ -16,7 +16,7 @@ def get_local_expl_args() -> argparse.Namespace:
                         help='Number of negative prototypes to consider')
     parser.add_argument('--k_nearest',
                         type=int,
-                        default=2,
+                        default=1,
                         help='Number of nearest feature positions (per principal direction) to consider')
     parser.add_argument('--sample_dir',
                         type=str,

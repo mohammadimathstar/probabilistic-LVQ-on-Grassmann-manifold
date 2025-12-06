@@ -9,8 +9,6 @@ from typing import Union
 
 from explain.explain_utils import input_x_grad_map, gradcam_map, raw_grad_map
 
-# from util.glvq import IdentityLoss
-relu = ReLU()
 
 
 def rel_matrix(rel: torch.Tensor):

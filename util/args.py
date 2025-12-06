@@ -19,21 +19,22 @@ def get_args() -> argparse.Namespace:
     parser.add_argument('--dataset',
                         type=str,
                         # default='ETH-80',
-                        default='CUB-200-2011',
+                        # default='CUB-200-2011',
                         # default='PETS',
                         # default='CARS',
                         # default='BRAIN',
                         # default='MURA',
+                        default='SkinCancerISIC',
                         help='The name of dataset for training.')
     parser.add_argument('--nclasses',
                         type=int,
-                        default=200, #37, #196,
+                        default=9, #37, #196, 9
                         help="The number of classes."
                         )
     parser.add_argument('--net',
                         type=str,
-                        # default='resnet50',
-                        default='resnet50_inat',
+                        default='resnet50',
+                        # default='resnet50_inat',
                         # default='convnext_tiny_13',
                         help='Base network used in the tree. Pretrained network on iNaturalist is only available for '
                              'resnet50_inat (default). Others are pretrained on ImageNet. Options are: resnet18, '
@@ -63,7 +64,7 @@ def get_args() -> argparse.Namespace:
     # Training hyperparameters
     parser.add_argument('--batch_size_train',
                         type=int,
-                        default=16,
+                        default=32,
                         help='Batch size of training data.')
     parser.add_argument('--batch_size_test',
                         type=int,
@@ -102,7 +103,7 @@ def get_args() -> argparse.Namespace:
                         )
     parser.add_argument('--dim_of_subspace',
                         type=int,
-                        default=5,
+                        default=10,
                         help="The dimensionality of subspaces 'd'."
                         )
     parser.add_argument('--coef_dim_of_subspace',
@@ -130,12 +131,12 @@ def get_args() -> argparse.Namespace:
                         help='The optimizer learning rate for training the 1x1 conv layer and last conv layer of the underlying neural network (applicable to resnet50 and densenet121)')
     parser.add_argument('--freeze_epochs',
                         type=int,
-                        default=5,
+                        default=10,
                         help='Number of epochs where pretrained features_net will be frozen.'
                         )
     parser.add_argument('--lr_net',
                         type=float,
-                        default=1e-7, #1e-5
+                        default=1e-5, #1e-5
                         help='The optimizer learning rate for the underlying neural network')
     parser.add_argument('--momentum',
                         type=float,

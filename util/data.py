@@ -56,6 +56,11 @@ def get_data(args: argparse.Namespace):
                         './data/ETH-80/train',
                         './data/ETH-80/train',
                         './data/ETH-80/test')
+    if args.dataset == 'SkinCancerISIC':
+        return get_cars(True,
+                        './data/SkinCancer-ISIC/Train',
+                        './data/SkinCancer-ISIC/Train',
+                        './data/SkinCancer-ISIC/Test')
         # return get_pets(True, './data/PETS/dataset/train', './data/PETS/dataset/train', './data/PETS/dataset/test',
         #                 args.image_size, args.seed, args.validation_size)
         # return get_pets(True, './data/PETS/dataset/train', './data/PETS/dataset/train',
@@ -227,6 +232,55 @@ def get_cars(augment: bool, train_dir: str, project_dir: str, test_dir: str, img
     classes = trainset.classes
 
     return trainset, projectset, testset, classes, shape
+
+
+def get_skins(augment: bool, train_dir: str, project_dir: str, test_dir: str, img_size=224):
+    shape = (3, img_size, img_size)
+    mean = (0.485, 0.456, 0.406)
+    std = (0.229, 0.224, 0.225)
+
+    normalize = transforms.Normalize(mean=mean, std=std)
+    transform_no_augment = transforms.Compose([
+        transforms.Resize(size=(img_size, img_size)),
+        transforms.ToTensor(),
+        normalize
+    ])
+
+    if augment:
+        transform = transforms.Compose([
+            # This randomly crops and resizes the image. It's very effective.
+            transforms.RandomResizedCrop(img_size, scale=(0.8, 1.0)),
+            transforms.RandomHorizontalFlip(),
+            transforms.RandomVerticalFlip(),
+            # We increase the rotation amount from 20 to 30 degrees.
+            transforms.RandomRotation(30),
+            # We make the color changes a bit stronger.
+            transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
+            transforms.ToTensor(),
+            transform_no_augment # Using ImageNet stats from Part 3
+        ])
+        # transform = transforms.Compose([
+        #     transforms.Resize(size=(img_size + 32, img_size + 32)),  # resize to 256x256
+        #     transforms.RandomOrder([
+        #         transforms.RandomPerspective(distortion_scale=0.5, p=0.5),
+        #         transforms.ColorJitter((0.6, 1.4), (0.6, 1.4), (0.6, 1.4), (-0.4, 0.4)),
+        #         transforms.RandomHorizontalFlip(),
+        #         transforms.RandomAffine(degrees=15, shear=(-2, 2)),
+        #     ]),
+        #     transforms.RandomCrop(size=(img_size, img_size)),  # crop to 224x224
+        #     transforms.ToTensor(),
+        #     normalize,
+        # ])
+    else:
+        transform = transform_no_augment
+
+    trainset = torchvision.datasets.ImageFolder(train_dir, transform=transform)
+    projectset = torchvision.datasets.ImageFolder(project_dir, transform=transform_no_augment)
+    testset = torchvision.datasets.ImageFolder(test_dir, transform=transform_no_augment)
+    classes = trainset.classes
+
+    return trainset, projectset, testset, classes, shape
+
 
 
 if __name__=='__main__':
