@@ -148,7 +148,7 @@ def compute_single_image_heatmap(
     heatmap_upsampled_normalized = save_feature_importance_heatmap(heatmap_upsampled, UPSAMPLED_HEATMAP_PATH)
 
     # Use 0.6/0.4 ratio for better visibility
-    overlay = 0.6 * image_resized_np  + 0.4 * heatmap_upsampled_normalized
+    overlay = 0.4 * image_resized_np  + 0.5 * heatmap_upsampled_normalized
     OVERLAY_PATH = os.path.join(out_dir, 'heatmap_original_image.png')
 
     plt.imsave(fname=OVERLAY_PATH, arr=overlay, vmin=0.0, vmax=1.0)
@@ -186,6 +186,7 @@ def k_closest_feature_positions(feature_map, V, k=1):
     # cosine similarity matrix → (HW, d)
     # each column j gives sim(feature_map[:, i], V[:, j])
     sims = F_norm.T @ V_norm   # (HW, d)
+    # sims = reshaped_feature_map.T @ V
 
     # for "closest" vectors, we want **largest cosine similarity**
     topk_vals, topk_idx = torch.topk(sims, k=k, dim=0)  # (k, d)

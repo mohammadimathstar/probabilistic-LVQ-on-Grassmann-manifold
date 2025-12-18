@@ -48,7 +48,7 @@ def get_args() -> argparse.Namespace:
                         )
     parser.add_argument('--epsilon',
                         type=float,
-                        default=0.001,
+                        default=0.00001,
                         help="To create a smooth probability function (instead of one-hot encoding)."
                         )
     parser.add_argument('--beta',
@@ -81,12 +81,12 @@ def get_args() -> argparse.Namespace:
                         default=512, # 512
                         help='Depth of the prototype and therefore also depth of convolutional output')
     
-    parser.add_argument('--depth_of_net_last_layer',
-                        type=int,
-                        default=2048,
-                        # default = 768,
-                        help="Number of pixels in the last layer of the feature net."
-                        )
+    # parser.add_argument('--depth_of_net_last_layer',
+    #                     type=int,
+    #                     default=2048,
+    #                     # default = 768,
+    #                     help="Number of pixels in the last layer of the feature net."
+    #                     )
     parser.add_argument('--W1',
                         type=int,
                         default=1,
@@ -103,7 +103,7 @@ def get_args() -> argparse.Namespace:
                         )
     parser.add_argument('--dim_of_subspace',
                         type=int,
-                        default=10,
+                        default=5,
                         help="The dimensionality of subspaces 'd'."
                         )
     parser.add_argument('--coef_dim_of_subspace',
@@ -119,7 +119,7 @@ def get_args() -> argparse.Namespace:
                         )
     parser.add_argument('--lr_protos',
                         type=float,
-                        default=1e-2, #5e-2,
+                        default=5e-2, #5e-2,
                         help='The learning rate for the training of the prototypes')
     parser.add_argument('--lr_rel',
                         type=float,
@@ -136,7 +136,7 @@ def get_args() -> argparse.Namespace:
                         )
     parser.add_argument('--lr_net',
                         type=float,
-                        default=1e-5, #1e-5
+                        default=5e-5, #CNN = 1e-5, TinyConvNext = 1e-4
                         help='The optimizer learning rate for the underlying neural network')
     parser.add_argument('--momentum',
                         type=float,

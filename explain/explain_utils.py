@@ -47,10 +47,13 @@ def input_x_grad_map(feature_map: torch.Tensor, grad_feat: torch.Tensor) -> torc
     Compute elementwise product then aggregate channels by L2 norm.
     feature_map, grad_feat: (C, H, W)
     """
+    # prod = torch.abs(feature_map) * grad_feat
     prod = feature_map * grad_feat
     #########CHECK *****************
     # We sum over channels to preserve sign (unlike norm which is always positive)
-    return prod.sum(dim=0), prod
+    # return prod.sum(dim=0)
+
+    return torch.abs(prod.sum(dim=0))
     # return torch.norm(prod, dim=0)
 
 

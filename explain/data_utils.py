@@ -54,6 +54,8 @@ def extract_class_from_filename(filename: str, args: argparse.Namespace) -> str:
         return "_".join(filename.split("_")[:-1])
     elif args.dataset == 'MURA':
         return filename.split("_")[2].split("-")[0]
+    elif args.dataset == 'SkinCancerISIC':
+        return "_".join(filename.split("_")[:-2])
     else:
         raise ValueError(f"Invalid dataset name provided: {args.dataset}")
 
@@ -76,6 +78,7 @@ def get_image_files(args: argparse.Namespace, class_mapping: dict):
             
         # Extract class name from the image filename
         class_name = extract_class_from_filename(filename, args)
+        
         
         # Get the corresponding class index
         label_idx = label_to_index[class_name.lower()]

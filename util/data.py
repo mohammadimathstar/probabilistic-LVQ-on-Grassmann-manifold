@@ -61,6 +61,11 @@ def get_data(args: argparse.Namespace):
                         './data/SkinCancer-ISIC/Train',
                         './data/SkinCancer-ISIC/Train',
                         './data/SkinCancer-ISIC/Test')
+    if args.dataset == 'Chest':
+        return get_cars(True,
+                        './data/chest_xray/train',
+                        './data/chest_xray/val',
+                        './data/chest_xray/test')
         # return get_pets(True, './data/PETS/dataset/train', './data/PETS/dataset/train', './data/PETS/dataset/test',
         #                 args.image_size, args.seed, args.validation_size)
         # return get_pets(True, './data/PETS/dataset/train', './data/PETS/dataset/train',
@@ -287,9 +292,9 @@ if __name__=='__main__':
     from util.args import get_args
     import pickle
     args = get_args()
-    args.dataset ='MURA'
+    args.dataset ='SkinCancerISIC'
     _, _, _, classes, _ = get_data(args)
-    dic = {i: k for i, k in enumerate(classes)}
+    dic = {i: k.replace(' ', '_') for i, k in enumerate(classes)}
     print(dic)
     with open('index2label_%s.pkl' % args.dataset , 'wb') as f:
         pickle.dump(dic, f)
@@ -297,164 +302,3 @@ if __name__=='__main__':
     # with open('index2label_%s.pkl' % args.dataset , 'rb') as f:
     #     pickle.load(dic, f)
 
-
-
-#########################
-# def create_datasets(transform1, transform2, transform_no_augment, num_channels: int, train_dir: str, project_dir: str,
-#                     test_dir: str, seed: int, validation_size: float, train_dir_pretrain=None, test_dir_projection=None,
-#                     transform1p=None):
-#     print(train_dir)
-#     trainvalset = torchvision.datasets.ImageFolder(train_dir)
-#     classes = trainvalset.classes
-#     targets = trainvalset.targets
-#     indices = list(range(len(trainvalset)))
-#
-#     train_indices = indices
-#
-#     if test_dir is None:
-#         if validation_size <= 0.:
-#             raise ValueError(
-#                 "There is no test set directory, so validation size should be > 0 such that training set can be split.")
-#         subset_targets = list(np.array(targets)[train_indices])
-#         train_indices, test_indices = train_test_split(train_indices, test_size=validation_size,
-#                                                        stratify=subset_targets, random_state=seed)
-#         testset = torch.utils.data.Subset(torchvision.datasets.ImageFolder(train_dir, transform=transform_no_augment),
-#                                           indices=test_indices)
-#         print("Samples in trainset:", len(indices), "of which", len(train_indices), "for training and ",
-#               len(test_indices), "for testing.", flush=True)
-#     else:
-#         testset = torchvision.datasets.ImageFolder(test_dir, transform=transform_no_augment)
-#
-#     trainset = torch.utils.data.Subset(
-#         TwoAugSupervisedDataset(trainvalset, transform1=transform1, transform2=transform2), indices=train_indices)
-#     trainset_normal = torch.utils.data.Subset(
-#         torchvision.datasets.ImageFolder(train_dir, transform=transform_no_augment), indices=train_indices)
-#     trainset_normal_augment = torch.utils.data.Subset(
-#         torchvision.datasets.ImageFolder(train_dir, transform=transforms.Compose([transform1, transform2])),
-#         indices=train_indices)
-#     projectset = torchvision.datasets.ImageFolder(project_dir, transform=transform_no_augment)
-#
-#     if test_dir_projection is not None:
-#         testset_projection = torchvision.datasets.ImageFolder(test_dir_projection, transform=transform_no_augment)
-#     else:
-#         testset_projection = testset
-#     if train_dir_pretrain is not None:
-#         trainvalset_pr = torchvision.datasets.ImageFolder(train_dir_pretrain)
-#         targets_pr = trainvalset_pr.targets
-#         indices_pr = list(range(len(trainvalset_pr)))
-#         train_indices_pr = indices_pr
-#         if test_dir is None:
-#             subset_targets_pr = list(np.array(targets_pr)[indices_pr])
-#             train_indices_pr, test_indices_pr = train_test_split(indices_pr, test_size=validation_size,
-#                                                                  stratify=subset_targets_pr, random_state=seed)
-#
-#         trainset_pretraining = torch.utils.data.Subset(
-#             TwoAugSupervisedDataset(trainvalset_pr, transform1=transform1p, transform2=transform2),
-#             indices=train_indices_pr)
-#     else:
-#         trainset_pretraining = None
-#
-#     return trainset, trainset_pretraining, trainset_normal, trainset_normal_augment, projectset, testset, testset_projection, classes, num_channels, train_indices, torch.LongTensor(
-#         targets)
-
-
-
-
-# def get_pets(augment: bool, train_dir: str, project_dir: str, test_dir: str, img_size: int, seed: int,
-#              validation_size: float):
-#     mean = (0.485, 0.456, 0.406)
-#     std = (0.229, 0.224, 0.225)
-#     normalize = transforms.Normalize(mean=mean, std=std)
-#     transform_no_augment = transforms.Compose([
-#         transforms.Resize(size=(img_size, img_size)),
-#         transforms.ToTensor(),
-#         normalize
-#     ])
-#
-#     if augment:
-#         transform1 = transforms.Compose([
-#             transforms.Resize(size=(img_size + 48, img_size + 48)),
-#             TrivialAugmentWideNoColor(),
-#             transforms.RandomHorizontalFlip(),
-#             transforms.RandomResizedCrop(img_size + 8, scale=(0.95, 1.))
-#         ])
-#
-#         transform2 = transforms.Compose([
-#             TrivialAugmentWideNoShape(),
-#             transforms.RandomCrop(size=(img_size, img_size)),  # includes crop
-#             transforms.ToTensor(),
-#             normalize
-#         ])
-#     else:
-#         transform1 = transform_no_augment
-#         transform2 = transform_no_augment
-#
-#     return create_datasets(transform1, transform2, transform_no_augment, 3, train_dir, project_dir, test_dir, seed,
-#                            validation_size)
-
-#
-# class TwoAugSupervisedDataset(torch.utils.data.Dataset):
-#     r"""Returns two augmentation and no labels."""
-#
-#     def __init__(self, dataset, transform1, transform2):
-#         self.dataset = dataset
-#         self.classes = dataset.classes
-#         if type(dataset) == torchvision.datasets.folder.ImageFolder:
-#             self.imgs = dataset.imgs
-#             self.targets = dataset.targets
-#         else:
-#             self.targets = dataset._labels
-#             self.imgs = list(zip(dataset._image_files, dataset._labels))
-#         self.transform1 = transform1
-#         self.transform2 = transform2
-#
-#     def __getitem__(self, index):
-#         image, target = self.dataset[index]
-#         image = self.transform1(image)
-#         return self.transform2(image), self.transform2(image), target
-#
-#     def __len__(self):
-#         return len(self.dataset)
-#
-#
-# # function copied from https://pytorch.org/vision/stable/_modules/torchvision/transforms/autoaugment.html#TrivialAugmentWide (v0.12) and adapted
-# class TrivialAugmentWideNoColor(transforms.TrivialAugmentWide):
-#     def _augmentation_space(self, num_bins: int) -> Dict[str, Tuple[Tensor, bool]]:
-#         return {
-#             "Identity": (torch.tensor(0.0), False),
-#             "ShearX": (torch.linspace(0.0, 0.5, num_bins), True),
-#             "ShearY": (torch.linspace(0.0, 0.5, num_bins), True),
-#             "TranslateX": (torch.linspace(0.0, 16.0, num_bins), True),
-#             "TranslateY": (torch.linspace(0.0, 16.0, num_bins), True),
-#             "Rotate": (torch.linspace(0.0, 60.0, num_bins), True),
-#         }
-#
-#
-# class TrivialAugmentWideNoShapeWithColor(transforms.TrivialAugmentWide):
-#     def _augmentation_space(self, num_bins: int) -> Dict[str, Tuple[Tensor, bool]]:
-#         return {
-#             "Identity": (torch.tensor(0.0), False),
-#             "Brightness": (torch.linspace(0.0, 0.5, num_bins), True),
-#             "Color": (torch.linspace(0.0, 0.5, num_bins), True),
-#             "Contrast": (torch.linspace(0.0, 0.5, num_bins), True),
-#             "Sharpness": (torch.linspace(0.0, 0.5, num_bins), True),
-#             "Posterize": (8 - (torch.arange(num_bins) / ((num_bins - 1) / 6)).round().int(), False),
-#             "Solarize": (torch.linspace(255.0, 0.0, num_bins), False),
-#             "AutoContrast": (torch.tensor(0.0), False),
-#             "Equalize": (torch.tensor(0.0), False),
-#         }
-#
-#
-# class TrivialAugmentWideNoShape(transforms.TrivialAugmentWide):
-#     def _augmentation_space(self, num_bins: int) -> Dict[str, Tuple[Tensor, bool]]:
-#         return {
-#
-#             "Identity": (torch.tensor(0.0), False),
-#             "Brightness": (torch.linspace(0.0, 0.5, num_bins), True),
-#             "Color": (torch.linspace(0.0, 0.02, num_bins), True),
-#             "Contrast": (torch.linspace(0.0, 0.5, num_bins), True),
-#             "Sharpness": (torch.linspace(0.0, 0.5, num_bins), True),
-#             "Posterize": (8 - (torch.arange(num_bins) / ((num_bins - 1) / 6)).round().int(), False),
-#             "AutoContrast": (torch.tensor(0.0), False),
-#             "Equalize": (torch.tensor(0.0), False),
-#         }

@@ -139,7 +139,7 @@ def compute_feature_importance(feature_map, label,
     grad_sim = rotated_prototype_pos @ rel_matrix(relevances) @ principal_direction_contribution
     
     # regional_effects_pos = raw_grad_map(grad_sim.view(num_channels, height, width))
-    regional_effects_pos, regional_effects_pos_3d = input_x_grad_map(
+    regional_effects_pos = input_x_grad_map(
         feature_map, 
         grad_sim.view(num_channels, height, width),   
     )
@@ -160,7 +160,7 @@ def compute_feature_importance(feature_map, label,
         grad_sim = rotated_prototype @ rel_matrix(relevances) @ principal_direction_contribution
         
         # regional_effects_neg = raw_grad_map(grad_sim.view(num_channels, height, width))
-        regional_effects_neg, regional_effects_neg_3d = input_x_grad_map(
+        regional_effects_neg = input_x_grad_map(
             feature_map, 
             grad_sim.view(num_channels, height, width),   
         )

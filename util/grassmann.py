@@ -51,6 +51,9 @@ def grassmann_repr(batch_imgs: Tensor, dim_of_subspace: int) -> Tensor:
     # Reshape the batch images to shape (batch_size, num_of_channels, W*H)
     xs = batch_imgs.view(bsize, nchannel, w * h)
 
+    Mean = torch.mean(xs, dim=2, keepdim=True)
+    xs = xs - Mean
+
     try:
         U, S, Vh = torch.linalg.svd(xs, full_matrices=False)
     except:
@@ -93,6 +96,8 @@ def grassmann_repr_full(batch_imgs: Tensor, dim_of_subspace: int) -> Tensor:
     bsize, nchannel, w, h = batch_imgs.shape
     # Reshape the batch images to shape (batch_size, num_of_channels, W*H)
     xs = batch_imgs.view(bsize, nchannel, w * h)
+    Mean = torch.mean(xs, dim=2, keepdim=True)
+    xs = xs - Mean
 
     # SVD: generate principal directions
     U, S, Vh = torch.linalg.svd(xs, full_matrices=False)
