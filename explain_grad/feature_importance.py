@@ -15,6 +15,8 @@ from typing import List, Optional
 from typing import Union
 from torch import Tensor
 
+from scipy.ndimage import gaussian_filter
+
 
 # from explain.importance_scores import compute_feature_importance, save_feature_importance_heatmap
 import torch
@@ -117,35 +119,53 @@ def compute_single_image_heatmap(
     output = model(image.unsqueeze(0))
     target_class = output.argmax(dim=1).item()
 
-    # Compute SmoothGrad saliency
-    saliency = smoothgrad(
-        model,
-        image,
-        target_class,
-        n_samples=args.smoothgrad_samples,
-        noise_std=args.smoothgrad_noise_std,
-    )
+    if args.method == 'smoothgrad':
+        logger.info(f"Using SmoothGrad for feature importance.")
+
+        # Compute SmoothGrad saliency
+        saliency = smoothgrad(
+            model,
+            image,
+            target_class,
+            n_samples=args.smoothgrad_samples,
+            noise_std=args.smoothgrad_noise_std,
+        )
+        
+        saliency = saliency * img_transformed
+    elif args.method == 'raw_grad':
+        logger.info(f"Using raw gradient for feature importance.")
+
+        saliency = compute_saliency(model, image, target_class)
+        
+    elif args.method == 'grad_times_input':
+        logger.info(f"Using gradient times input for feature importance.")
+
+        grad = compute_saliency(model, image, target_class)
+        saliency = grad * img_transformed
+    else:
+        raise ValueError(f"Unknown method '{args.method}' for feature importance.")
+
     
-
-    # grad = compute_saliency(model, img_transformed, target_class=None)
-
-    # # grad = img_transformed.grad 
-    # grad_times_input = grad * img_transformed
-
-    # saliency = grad_times_input # grad
-    # saliency = grad
-
-
     # Take absolute value and collapse color channels
     saliency_map, _ = torch.max(saliency.abs(), dim=0) # common
+    # saliency_map, _ = saliency.abs().median(dim=0)  # alternative
     # saliency_map = saliency.abs().sum(dim=0)
     # saliency_map = saliency.abs().mean(dim=0)
 
-    # alpha = 10
-    # saliency_map = torch.log1p(alpha * saliency_map)  # log(1 + x) for better visualization
-    # saliency_map = saliency_map / (saliency_map.max() + 1e-8)  # normalize to [0, 1]
 
-    UPSAMPLED_HEATMAP_PATH = os.path.join(out_dir, 'heatmap_upsampled.png')
+    # Collapse channels if needed
+    saliency_map = saliency_map.cpu().numpy()    
+
+    # Cap outliers
+    saliency_map = cap_saliency_map(saliency_map, percentile=args.cap_percentile)
+
+    if args.add_log_scaling is not None and args.add_log_scaling:
+        saliency_map = np.log1p(saliency_map * args.add_log_scaling) / np.log1p(args.add_log_scaling)
+
+    # sigma = 0.2  # controls the amount of smoothing
+    # saliency_map = gaussian_filter(saliency_map, sigma=sigma)
+
+    UPSAMPLED_HEATMAP_PATH = os.path.join(out_dir, 'heatmap_grayscale.png')
     heatmap_upsampled_normalized = save_feature_importance_heatmap(saliency_map, UPSAMPLED_HEATMAP_PATH)
 
     # Use 0.6/0.4 ratio for better visibility
@@ -157,8 +177,6 @@ def compute_single_image_heatmap(
 
     logger.info(f"The image with its heatmap has been saved in '{OVERLAY_PATH}'.\n")
 
-    # plot_important_region_per_principal_direction(
-    #         image_resized_np, feature[0], rotated_prototype_pos, img_name, args)
 
 
 def compute_saliency(model, image, target_class=None):
@@ -166,6 +184,9 @@ def compute_saliency(model, image, target_class=None):
     image: tensor of shape (C, H, W), must be a leaf tensor
     """
     model.zero_grad()
+
+    if image.requires_grad is False:
+        image.requires_grad_(True)
 
     output = model(image.unsqueeze(0))  # add batch dim
 
@@ -202,6 +223,31 @@ def smoothgrad(model, image, target_class, n_samples=50, noise_std=0.1):
     smooth_saliency /= n_samples
     return smooth_saliency
 
+
+# import numpy as np
+
+def cap_saliency_map(saliency_map: np.ndarray, percentile: float = 99.0):
+    """
+    Caps extreme values of saliency map at the given percentile.
+    
+    Args:
+        saliency_map: 2D numpy array (H, W)
+        percentile: high percentile value to cap
+    
+    Returns:
+        saliency_capped: capped map (H, W)
+    """
+    # Compute the percentile value
+    cap_value = np.percentile(saliency_map, percentile)
+    
+    # Cap values
+    saliency_capped = np.minimum(saliency_map, cap_value)
+    
+    # Optional: normalize to [0,1]
+    saliency_capped = saliency_capped - np.min(saliency_capped)
+    saliency_capped /= (np.max(saliency_capped) + 1e-8)
+    
+    return saliency_capped
 
 
 
