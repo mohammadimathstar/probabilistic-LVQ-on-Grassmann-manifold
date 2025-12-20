@@ -111,9 +111,13 @@ def compute_single_image_heatmap(
     image_resized = F.resize(original_image, (args.image_size, args.image_size)) 
     image_resized_np = np.array(image_resized).astype(np.float32) / 255.0
 
-    ##################
+    
     # Make sure original image does NOT keep old gradients
     image = img_transformed.detach()
+    
+    # with torch.no_grad():
+    #     model.prototype_layer.relevances[0, :] = 0 # only focus on first principal direction
+    #     model.prototype_layer.relevances[0, 1] = 1.0 # only focus on first principal direction
 
     # Get prediction
     output = model(image.unsqueeze(0))
@@ -149,7 +153,7 @@ def compute_single_image_heatmap(
     # Take absolute value and collapse color channels
     saliency_map, _ = torch.max(saliency.abs(), dim=0) # common
     # saliency_map, _ = saliency.abs().median(dim=0)  # alternative
-    # saliency_map = saliency.abs().sum(dim=0)
+    # saliency_map = saliency.abs().mean(dim=0)
     # saliency_map = saliency.abs().mean(dim=0)
 
 
@@ -161,9 +165,6 @@ def compute_single_image_heatmap(
 
     if args.add_log_scaling is not None and args.add_log_scaling:
         saliency_map = np.log1p(saliency_map * args.add_log_scaling) / np.log1p(args.add_log_scaling)
-
-    # sigma = 0.2  # controls the amount of smoothing
-    # saliency_map = gaussian_filter(saliency_map, sigma=sigma)
 
     UPSAMPLED_HEATMAP_PATH = os.path.join(out_dir, 'heatmap_grayscale.png')
     heatmap_upsampled_normalized = save_feature_importance_heatmap(saliency_map, UPSAMPLED_HEATMAP_PATH)
@@ -223,6 +224,28 @@ def smoothgrad(model, image, target_class, n_samples=50, noise_std=0.1):
     smooth_saliency /= n_samples
     return smooth_saliency
 
+def smoothgrad_median(model, image, target_class, n_samples=50, noise_std=0.1):
+    """
+    image: tensor of shape (C, H, W)
+    """
+    model.eval()
+    # smooth_saliency = torch.zeros_like(image)
+    saliency_list = []
+    for _ in range(n_samples):
+        noise = torch.randn_like(image) * noise_std
+
+        # Create leaf tensor
+        noisy_image = (image + noise).detach().clone()
+        noisy_image.requires_grad_(True)
+
+        saliency = compute_saliency(model, noisy_image, target_class)
+        saliency_list.append(saliency)
+
+    # Compute median of saliency maps
+    saliency_tensor = torch.stack(saliency_list, dim=0)
+    smooth_saliency = torch.median(saliency_tensor, dim=0)[0]
+
+    return smooth_saliency
 
 # import numpy as np
 

@@ -15,7 +15,7 @@ def get_local_expl_args() -> argparse.Namespace:
                         help='Directory to trained model')
     parser.add_argument('--method',
                         type=str,
-                        default='grad_times_input',
+                        default='smoothgrad',
                         choices=['raw_grad', 'grad_times_input', 'smoothgrad'],
                         help='Feature importance method to use')
     parser.add_argument('--smoothgrad_samples',
@@ -24,11 +24,11 @@ def get_local_expl_args() -> argparse.Namespace:
                         help='Number of negative prototypes to consider')
     parser.add_argument('--smoothgrad_noise_std',
                         type=float,
-                        default=0.2,
+                        default=0.1,
                         help='Noise standard deviation for SmoothGrad')
     parser.add_argument('--cap_percentile',
                         type=float,
-                        default=99.5,
+                        default=99.0,
                         help='Number of nearest feature positions (per principal direction) to consider')
     parser.add_argument('--add_log_scaling',
                     type=float,
