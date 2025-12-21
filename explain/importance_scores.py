@@ -77,8 +77,6 @@ def compute_feature_importance(feature_map, label,
         torch.Tensor: Principal direction effect per region.
     """
 
-    k_neg = k_negatives
-
     # Ensure batch size is 1, as we squeeze dim 0
     assert feature_map.shape[0] == 1, "Batch size must be 1 for this function"
     _, num_channels, height , width = feature_map.shape
@@ -90,7 +88,8 @@ def compute_feature_importance(feature_map, label,
     # Retrieve distance and initialize loss
     feature_map = feature_map.squeeze(0)
     Rt = Rt.squeeze(0)
-    # s_matrix = s_matrix.squeeze(0)
+    
+    
     scores = output_dict['score'].squeeze(0)
     Q = output_dict['Q'].squeeze(0)
     Qw = output_dict['Qw'].squeeze(0)
@@ -109,7 +108,7 @@ def compute_feature_importance(feature_map, label,
     reshaped_features = feature_map.view(num_channels, height * width)
     
     # Classification status check
-    classification_status = 'misclassified' if winner_idx != positive_idx else 'correct'
+    # classification_status = 'misclassified' if winner_idx != positive_idx else 'correct'
     print(f"\t\t\tpositive_idx: {positive_idx}, \
               \t\t\t\twinner_idx: {winner_idx}")
     print(f"\t\t\tNegative indices (top {len(negative_indices)}): {negative_indices}")

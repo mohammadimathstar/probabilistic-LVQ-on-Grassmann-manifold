@@ -109,12 +109,13 @@ def compute_single_image_heatmap(
     
     image_resized = F.resize(original_image, (args.image_size, args.image_size)) 
     image_resized_np = np.array(image_resized).astype(np.float32) / 255.0
-    # cv2.resize(
-    #     original_image,
-    #     dsize=(args.image_size, args.image_size),
-    #     interpolation=cv2.INTER_CUBIC
-    # )
     
+    if args.which_direction is not None:
+        with torch.no_grad():
+            model.prototype_layer.relevances[0, :] = 0 # only focus on first principal direction
+            model.prototype_layer.relevances[0, args.which_direction] = 1.0 # only focus on first principal direction
+
+
     # Add batch dimension for model forward pass
     sample = img_transformed.unsqueeze(0)  # (1, C, H, W)
 
@@ -148,7 +149,7 @@ def compute_single_image_heatmap(
     heatmap_upsampled_normalized = save_feature_importance_heatmap(heatmap_upsampled, UPSAMPLED_HEATMAP_PATH)
 
     # Use 0.6/0.4 ratio for better visibility
-    overlay = 0.4 * image_resized_np  + 0.5 * heatmap_upsampled_normalized
+    overlay = 0.4 * image_resized_np  + 0.3 * heatmap_upsampled_normalized
     OVERLAY_PATH = os.path.join(out_dir, 'heatmap_original_image.png')
 
     plt.imsave(fname=OVERLAY_PATH, arr=overlay, vmin=0.0, vmax=1.0)

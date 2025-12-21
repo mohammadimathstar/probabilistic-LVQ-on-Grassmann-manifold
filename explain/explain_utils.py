@@ -52,6 +52,8 @@ def input_x_grad_map(feature_map: torch.Tensor, grad_feat: torch.Tensor) -> torc
     #########CHECK *****************
     # We sum over channels to preserve sign (unlike norm which is always positive)
     # return prod.sum(dim=0)
+    # sal_map, _ = torch.max(prod.abs(), dim=0)
+    # return sal_map
 
     return torch.abs(prod.sum(dim=0))
     # return torch.norm(prod, dim=0)
