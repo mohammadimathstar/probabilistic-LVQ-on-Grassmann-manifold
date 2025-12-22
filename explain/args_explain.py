@@ -8,14 +8,19 @@ def get_local_expl_args() -> argparse.Namespace:
     parser.add_argument('--model_path',
                         type=str,
                         # default='./run_prototypes/pca/skin/run1/',
-                        # default='./run_prototypes/cub/meika/ce/sgd-32batch/d5/run3/',
+                        default='./run_prototypes/cub/meika/ce/sgd-32batch/d5/run3/',
                         # default='./run_prototypes/cub/meika/reverse/sgd-32batch/dim5/run2/',
                         # default='./run_prototypes/brain/resnet50-v2/reverse-kl/batch32-dim5/run1/',
-                        default='./run_prototypes/pca/skin/run1/',
+                        # default='./run_prototypes/pca/skin/run1/',
                         help='Directory to trained model')
+    parser.add_argument('--explain_method',
+                        type=str,
+                        default='input_x_grad',
+                        choices=['raw_grad', 'input_x_grad', 'gradcam'],
+                        help='Method to compute importance scores')
     parser.add_argument('--which_direction',
                         type=int,
-                        default=None,
+                        default=1,
                         help='Principal direction to consider (0-indexed). If not set, all directions are used.')
     parser.add_argument('--k_negatives',
                         type=int,

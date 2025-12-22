@@ -39,7 +39,10 @@ def raw_grad_map(grad_feat: torch.Tensor) -> torch.Tensor:
     grad_feat: (C, H, W)
     return: (H, W) with L2 norm over channels
     """
-    return grad_feat.sum(dim=0) # torch.norm(grad_feat, dim=0)
+    return grad_feat.sum(dim=0) 
+    # return torch.norm(grad_feat, dim=0)
+    # return torch.abs(grad_feat).sum(dim=0)
+    # return torch.max(torch.abs(grad_feat), dim=0)[0]
     
 
 def input_x_grad_map(feature_map: torch.Tensor, grad_feat: torch.Tensor) -> torch.Tensor:
