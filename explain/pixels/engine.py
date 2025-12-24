@@ -12,8 +12,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from typing import Any
 
-from explain_grad.attribution import compute_saliency, smoothgrad, cap_saliency_map, save_saliency_heatmap
-from explain_grad.utils import load_and_process_images_generator
+from explain.pixels.attribution import compute_saliency, smoothgrad, cap_saliency_map, save_saliency_heatmap
+from explain.common_utils import load_and_process_images_generator
 
 
 def run_explanation_engine(model: torch.nn.Module, args: Any, logger: logging.Logger):

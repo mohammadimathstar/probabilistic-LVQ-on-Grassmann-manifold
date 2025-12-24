@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 import cv2
 from typing import Union, Dict, Any, Tuple, List
 
-from explain.utils import raw_grad_map, input_x_grad_map, gradcam_map
+from explain.regions.utils import raw_grad_map, input_x_grad_map, gradcam_map
 
 
 def get_relevance_matrix(relevances: torch.Tensor) -> torch.Tensor:

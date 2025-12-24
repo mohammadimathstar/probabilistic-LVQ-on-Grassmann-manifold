@@ -12,9 +12,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 from typing import Any, Tuple
 
-from explain.attribution import compute_feature_importance, save_importance_heatmap
-from explain.visualization import plot_important_region_per_principal_direction
-from explain.utils import load_and_process_images_generator
+from explain.regions.attribution import compute_feature_importance, save_importance_heatmap
+from explain.regions.visualization import plot_important_region_per_principal_direction
+from explain.common_utils import load_and_process_images_generator
 
 
 def run_explanation_engine(model: torch.nn.Module, args: Any, logger: logging.Logger):
@@ -70,6 +70,9 @@ def explain_single_image(model: torch.nn.Module,
     sample = img_transformed.unsqueeze(0)
     with torch.no_grad():
         feature, _, Rt, S, output = model.forward_partial(sample)
+
+    overlay_path = os.path.join(out_dir, 'original_image.png')
+    plt.imsave(overlay_path, image_np)
 
     # 1. Total Heatmap
     region_heatmap, rotated_prototype_pos = _generate_total_heatmap(
