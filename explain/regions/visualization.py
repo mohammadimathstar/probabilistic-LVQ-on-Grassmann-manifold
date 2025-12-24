@@ -110,7 +110,7 @@ def plot_important_region_per_principal_direction(image: np.ndarray,
     plt.imsave(highlight_path, draw_img.astype(np.float32) / 255.0)
 
 
-def visualize_regions(input_dir: str, output_name: str = "summary_visualization.png", cols: int = 4):
+def visualize_regions(input_dir: str, output_name: str = "summary_visualization.pdf", cols: int = 4):
     """
     Create a grid visualization of region-based explanation results.
     """
