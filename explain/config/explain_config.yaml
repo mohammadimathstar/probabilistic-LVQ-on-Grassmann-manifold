@@ -1,0 +1,17 @@
+# Model and Dataset
+dataset: "CUB-200-2011"
+model_path: "./run_prototypes/cub/meika/ce/sgd-32batch/d5/run1/"
+sample_dir: "./samples"
+results_dir: "./explanations"
+
+# Attribution Settings
+explain_method: "input_x_grad"  # Options: raw_grad, input_x_grad, gradcam
+k_negatives: 0                 # Number of negative prototypes to consider
+k_nearest: 1                   # Number of nearest feature positions per principal direction
+
+# Visualization Settings
+image_size: 224
+
+# Execution Settings
+num_images: null                  # Number of images to process (null for all)
+disable_cuda: false
