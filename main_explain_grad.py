@@ -1,90 +1,59 @@
-import argparse
 import os
 import logging
 from logging.handlers import RotatingFileHandler
 
-from PIL import Image
-
 import torch
-import torchvision.transforms as transforms
 
-from lvq.model import GrassmannLVQModel
-from explain_grad.feature_importance import compute_feature_importance_heatmap
-from explain_grad.args_explain import get_local_expl_args
-from explain_grad.data_utils import load_and_process_images_generator
-
-from util.glvq import FDivergence
+from explain_grad.config import get_explain_grad_args
+from explain_grad.engine import run_explanation_engine
 from util.load_model import load_grassmannlvq_model
 
 
-# ------------------------------
-# Logging Configuration
-# ------------------------------
-logger = logging.getLogger("ExplainAPI")
-logger.setLevel(logging.INFO)
+def setup_logger(log_file: str = './explanations.log') -> logging.Logger:
+    """Configure and return a logger instance."""
+    logger = logging.getLogger("ExplainAPI")
+    logger.setLevel(logging.INFO)
 
-formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-file_handler = RotatingFileHandler(
-    filename='./explanations.log', maxBytes=10000, backupCount=1
-)
-file_handler.setFormatter(formatter)
-logger.addHandler(file_handler)
-
-# Also add console handler for real-time feedback
-console_handler = logging.StreamHandler()
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
-
-
-
-
-def explain_decision(args: argparse.Namespace):
-    """
-    Explain model decisions by computing feature importance and visualizing regions of interest.
-    Processes images one-by-one instead of batching.
-    """
+    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
     
-    # Load the trained model
+    # File handler
+    file_handler = RotatingFileHandler(filename=log_file, maxBytes=100000, backupCount=1)
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
+
+    # Console handler
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
+
+    return logger
+
+
+def main():
+    """
+    Main entry point for explaining model decisions using gradient-based methods.
+    """
+    # 1. Load configuration
+    args = get_explain_grad_args()
+    logger = setup_logger()
+
+    # 2. Load the trained model
+    logger.info(f"Loading model from: {args.model_path}")
     model, model_args = load_grassmannlvq_model(
-        args_path=args.model_path + 'metadata/args.pickle',
-        checkpoint_path=args.model_path + 'checkpoints/best_test_model',
+        args_path=os.path.join(args.model_path, 'metadata/args.pickle'),
+        checkpoint_path=os.path.join(args.model_path, 'checkpoints/best_test_model'),
     )
 
-    model.eval()
+    # 3. Transfer model-specific arguments
+    args.nclasses = model_args.nclasses
+    # Ensure image size is consistent
+    if not hasattr(args, 'image_size') or args.image_size is None:
+        args.image_size = getattr(model_args, 'image_size', 224)
 
-    # Transfer model arguments to args
-    for k, v in model_args.__dict__.items():
-        setattr(args, k, v)
-    args.image_size = 224 #model_args.image_size
-
-    # Create results directory if it doesn't exist
-    os.makedirs(args.results_dir, exist_ok=True)
-
-    # Update results directory path to include dataset name
-    args.results_dir = os.path.join(args.results_dir, args.dataset)
-    
-    logger.info(f"Starting explanation process for dataset: {args.dataset}")
-    logger.info(f"Model loaded from: {args.model_path}")
-    logger.info(f"Results will be saved to: {args.results_dir}")
-    logger.info(f"Number of classes: {args.nclasses}")
-    logger.info(f"Number of prototypes: {model.prototype_layer.xprotos.shape[0]}\n")
-
-    # Create image generator for one-by-one processing
-    image_generator = load_and_process_images_generator(args, logger)
-    
-
-    # Compute feature importance heatmap for each image
-    compute_feature_importance_heatmap(
-        model=model, 
-        image_generator=image_generator, 
-        logger=logger, 
-        args=args
-    )
-    
-    # logger.info("Explanation process completed successfully!")
-
+    # 4. Run explanation engine
+    logger.info(f"Starting gradient-based explanation process for dataset: {args.dataset}")
+    run_explanation_engine(model=model, args=args, logger=logger)
 
 
 if __name__ == '__main__':
-    args = get_local_expl_args()
-    explain_decision(args)
+    main()

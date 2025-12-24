@@ -1,0 +1,21 @@
+# Configuration for Gradient-based Explanation Module
+
+# Model and Dataset
+dataset: "CUB-200-2011"
+model_path: "./run_prototypes/pca/cub/run1/"
+sample_dir: "./samples"
+results_dir: "./explanations_grad"
+
+# Attribution Settings
+method: "smoothgrad"           # Options: raw_grad, smoothgrad, grad_times_input
+smoothgrad_samples: 50         # Number of samples for SmoothGrad
+smoothgrad_noise_std: 0.1      # Noise standard deviation for SmoothGrad
+cap_percentile: 99.0           # Percentile to cap saliency map values
+add_log_scaling: null          # If set, apply log scaling to saliency map
+
+# Visualization Settings
+image_size: 224
+
+# Execution Settings
+num_images: null                  # Number of images to process (null for all)
+disable_cuda: false
