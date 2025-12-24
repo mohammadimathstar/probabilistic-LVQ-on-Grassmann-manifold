@@ -37,7 +37,10 @@ def input_x_grad_map(feature_map: torch.Tensor, grad_feat: torch.Tensor) -> torc
     Compute importance map as the absolute sum of (feature_map * grad_feat) over channels.
     """
     prod = feature_map * grad_feat
-    return torch.abs(prod.sum(dim=0))
+    return prod.sum(dim=0)
+    # return prod.abs().median(dim=0)[0]
+    # return torch.max(prod.abs(), dim=0)[0]
+    # return torch.abs(prod.sum(dim=0))
 
 
 def gradcam_map(feature_map: torch.Tensor, grad_feat: torch.Tensor, relu: bool = True) -> torch.Tensor:

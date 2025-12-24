@@ -90,7 +90,11 @@ def explain_single_image(model: torch.nn.Module,
     )
 
     # 4. Summary Visualization
-    visualize_regions(out_dir)
+    # Get relevances (shared across prototypes in this model version)
+    with torch.no_grad():
+        relevances = model.prototype_layer.relevances[0].cpu().numpy()
+
+    visualize_regions(out_dir, relevances=relevances)
     
     logger.info(f"The image with its heatmap has been saved in '{out_dir}'.\n")
 

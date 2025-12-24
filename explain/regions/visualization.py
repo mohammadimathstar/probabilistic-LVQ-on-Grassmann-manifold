@@ -1,7 +1,7 @@
 import os
 import math
 import matplotlib.pyplot as plt
-from typing import List, Tuple, Any
+from typing import List, Tuple, Any, Optional
 from PIL import Image
 
 import numpy as np
@@ -110,10 +110,15 @@ def plot_important_region_per_principal_direction(image: np.ndarray,
     plt.imsave(highlight_path, draw_img.astype(np.float32) / 255.0)
 
 
-def visualize_regions(input_dir: str, output_name: str = "summary_visualization.pdf", cols: int = 4):
+def visualize_regions(input_dir: str, 
+                      output_name: str = "summary_visualization.pdf", 
+                      cols: int = 4,
+                      relevances: Optional[np.ndarray] = None):
     """
     Create a grid visualization of region-based explanation results.
     """
+    relevances = None
+    
     # 1. Identify images to include
     original_path = os.path.join(input_dir, "original_image.png")
     total_heatmap_path = os.path.join(input_dir, "heatmap_original_image.png")
@@ -140,7 +145,11 @@ def visualize_regions(input_dir: str, output_name: str = "summary_visualization.
         for f in dir_files:
             idx = int(f.split("_")[-1].split(".")[0])
             images_to_plot.append(Image.open(os.path.join(directions_dir, f)))
-            titles.append(f"Direction {idx + 1}")
+            
+            title = f"Direction {idx + 1}"
+            if relevances is not None and idx < len(relevances):
+                title += f" (rel: {relevances[idx]:.3f})"
+            titles.append(title)
             
     if not images_to_plot:
         return
