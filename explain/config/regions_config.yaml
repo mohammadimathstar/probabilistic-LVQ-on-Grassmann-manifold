@@ -1,7 +1,7 @@
 # Model and Dataset
 dataset: "CUB-200-2011"
-model_path: "./run_prototypes/cub/meika/ce/dim5/run1/"
-# model_path: "./run_prototypes/cub/meika/reverse/dim5/run2/"
+# model_path: "./run_prototypes/cub/meika/ce/dim5/run1/"
+model_path: "./run_prototypes/pca/cub/run2/"
 sample_dir: "./samples"
 results_dir: "./explanations"
 
