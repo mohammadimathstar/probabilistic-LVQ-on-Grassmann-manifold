@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 from typing import Any, Tuple
 
 from explain.regions.attribution import compute_feature_importance, save_importance_heatmap
-from explain.regions.visualization import plot_important_region_per_principal_direction
+from explain.regions.visualization import plot_important_region_per_principal_direction, visualize_regions
 from explain.common_utils import load_and_process_images_generator
 
 
@@ -88,6 +88,11 @@ def explain_single_image(model: torch.nn.Module,
     plot_important_region_per_principal_direction(
         image_np, feature[0], rotated_prototype_pos, img_name, args
     )
+
+    # 4. Summary Visualization
+    visualize_regions(out_dir)
+    
+    logger.info(f"The image with its heatmap has been saved in '{out_dir}'.\n")
 
 
 def _generate_total_heatmap(model, feature, label, Rt, S, output, out_dir, img_name, image_np, args, logger):
