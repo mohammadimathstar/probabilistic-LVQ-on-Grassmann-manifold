@@ -14,7 +14,9 @@ from typing import Any, Tuple
 
 from explain.regions.attribution import compute_feature_importance, save_importance_heatmap
 from explain.regions.visualization import plot_important_region_per_principal_direction, visualize_regions
+from explain.regions.patch_finder import find_closest_patches_from_dataset, extract_and_save_patches
 from explain.common_utils import load_and_process_images_generator
+from util.data import get_dataloaders
 
 
 def run_explanation_engine(model: torch.nn.Module, args: Any, logger: logging.Logger):
@@ -172,3 +174,33 @@ def _generate_per_direction_heatmaps(model, feature, label, Rt, S, output, out_d
         plt.imsave(overlay_path_d, overlay_d)
 
     logger.info(f"Per-direction heatmaps saved in {directions_dir}")
+
+
+def run_patch_finding_engine(model: torch.nn.Module, args: Any, logger: logging.Logger):
+    """
+    Entry point for finding the closest patches in the training set to prototype directions.
+    """
+    logger.info("Initializing patch finding engine...")
+    
+    # Get dataloaders for the training set (projectset)
+    # We use a batch size that fits in memory
+    args.batch_size_train = getattr(args, 'batch_size_train', 32)
+    args.batch_size_test = getattr(args, 'batch_size_test', 32)
+    
+    trainloader, _, classes, _ = get_dataloaders(args)
+    
+    # Find closest patches
+    best_patches = find_closest_patches_from_dataset(
+        model=model,
+        dataloader=trainloader,
+        args=args,
+        logger=logger
+    )
+    
+    # Extract and save patches
+    extract_and_save_patches(
+        best_patches=best_patches,
+        classes=classes,
+        args=args,
+        logger=logger
+    )

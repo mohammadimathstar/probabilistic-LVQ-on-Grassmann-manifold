@@ -35,6 +35,9 @@ def get_unified_explain_args() -> argparse.Namespace:
     parser.add_argument('--explain_method', type=str, help='Method for regions mode (raw_grad, input_x_grad, gradcam)')
     parser.add_argument('--method', type=str, help='Method for pixels mode (raw_grad, smoothgrad, grad_times_input)')
 
+    # Patch finding
+    parser.add_argument('--find_patches', action='store_true', help='Find closest patches in training set to prototype directions')
+
     args = parser.parse_args()
 
     # Determine config path if not provided

@@ -47,21 +47,25 @@ def main():
 
     # 3. Transfer model-specific arguments
     args.nclasses = model_args.nclasses
+    args.dim_of_subspace = model_args.dim_of_subspace
     # Ensure image size is consistent
     if not hasattr(args, 'image_size') or args.image_size is None:
         args.image_size = getattr(model_args, 'image_size', 224)
 
     # 4. Run appropriate explanation engine
     if args.mode == 'regions':
-        from explain.regions.engine import run_explanation_engine
-        logger.info(f"Starting 'regions' explanation process for dataset: {args.dataset}")
+        from explain.regions.engine import run_explanation_engine, run_patch_finding_engine
+        if getattr(args, 'find_patches', False):
+            logger.info(f"Starting patch finding process for dataset: {args.dataset}")
+            run_patch_finding_engine(model=model, args=args, logger=logger)
+        else:
+            logger.info(f"Starting 'regions' explanation process for dataset: {args.dataset}")
+            run_explanation_engine(model=model, args=args, logger=logger)
     elif args.mode == 'pixels':
         from explain.pixels.engine import run_explanation_engine
         logger.info(f"Starting 'pixels' explanation process for dataset: {args.dataset}")
     else:
         raise ValueError(f"Unknown mode: {args.mode}")
-
-    run_explanation_engine(model=model, args=args, logger=logger)
 
 
 if __name__ == '__main__':
