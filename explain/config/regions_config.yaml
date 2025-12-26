@@ -1,7 +1,7 @@
 # Model and Dataset
 dataset: "CUB-200-2011" #"BRAIN" #"CUB-200-2011" , SkinCancerISIC, MURA, PETS
 model_path: "./run_prototypes/pca/cub/run2/"
-# model_path: "./run_prototypes/pca/pets/run1/"
+# model_path: "./run_prototypes/pca/cub/run1/"
 sample_dir: "./samples"
 results_dir: "./explanations"
 

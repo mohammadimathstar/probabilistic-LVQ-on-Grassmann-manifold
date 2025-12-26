@@ -16,7 +16,7 @@ from explain.regions.attribution import compute_feature_importance, save_importa
 from explain.regions.visualization import plot_important_region_per_principal_direction, visualize_regions
 from explain.regions.patch_finder import find_closest_patches_from_dataset, extract_and_save_patches
 from explain.common_utils import load_and_process_images_generator
-from util.data import get_dataloaders
+from util.data import get_dataloaders, get_data
 
 
 def run_explanation_engine(model: torch.nn.Module, args: Any, logger: logging.Logger):
@@ -182,17 +182,24 @@ def run_patch_finding_engine(model: torch.nn.Module, args: Any, logger: logging.
     """
     logger.info("Initializing patch finding engine...")
     
-    # Get dataloaders for the training set (projectset)
-    # We use a batch size that fits in memory
-    args.batch_size_train = getattr(args, 'batch_size_train', 32)
-    args.batch_size_test = getattr(args, 'batch_size_test', 32)
+    # Get projectset (training set without augmentation)
+    _, projectset, _, classes, _ = get_data(args)
     
-    trainloader, _, classes, _ = get_dataloaders(args)
+    if hasattr(projectset, 'root'):
+        logger.info(f"Using data from folder: {projectset.root}")
+    
+    cuda = not args.disable_cuda and torch.cuda.is_available()
+    projectloader = torch.utils.data.DataLoader(
+        projectset,
+        batch_size=getattr(args, 'batch_size_train', 32),
+        shuffle=False,
+        pin_memory=cuda
+    )
     
     # Find closest patches
     best_patches = find_closest_patches_from_dataset(
         model=model,
-        dataloader=trainloader,
+        dataloader=projectloader,
         args=args,
         logger=logger
     )
