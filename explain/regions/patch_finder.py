@@ -7,12 +7,15 @@ from tqdm import tqdm
 from typing import Any, List, Dict, Tuple
 from PIL import Image
 
+from explain.regions.attribution import compute_feature_importance
+
 def find_closest_patches_from_dataset(model: torch.nn.Module, 
                                      dataloader: torch.utils.data.DataLoader, 
                                      args: Any, 
-                                     logger: logging.Logger) -> Dict[int, List[Dict[str, Any]]]:
+                                     logger: logging.Logger) -> Dict[str, Dict[int, List[Dict[str, Any]]]]:
     """
-    Find the closest patches in the dataset to each principal direction of each class prototype.
+    Find the closest patches in the dataset to each principal direction of each class prototype,
+    both by cosine similarity and by importance (attribution).
     """
     model.eval()
     device = next(model.parameters()).device
@@ -20,73 +23,116 @@ def find_closest_patches_from_dataset(model: torch.nn.Module,
     num_classes = args.nclasses
     subspace_dim = args.dim_of_subspace
     
-    # best_patches[class_idx][direction_idx] = {similarity, image_path, row, col}
-    best_patches = {c: [None] * subspace_dim for c in range(num_classes)}
+    # best_patches[type][class_idx][direction_idx] = {similarity/importance, image_path, row, col}
+    results = {
+        'closest': {c: [None] * subspace_dim for c in range(num_classes)},
+        'important': {c: [None] * subspace_dim for c in range(num_classes)}
+    }
     
     # Get prototypes
     with torch.no_grad():
         # xprotos shape: (num_classes, embedding_dim, subspace_dim)
         xprotos = model.prototype_layer.xprotos
+        relevances = model.prototype_layer.relevances # (1, subspace_dim)
     
-    logger.info("Starting search for closest patches across the dataset...")
+    logger.info("Starting search for closest and most important patches across the dataset...")
     
-    # We need to know the image paths. ImageFolder dataset has 'samples' attribute.
-    # However, dataloader might not return paths. Let's assume we can get them from the dataset.
     dataset = dataloader.dataset
     image_paths = [s[0] for s in dataset.samples]
     
-    pbar = tqdm(total=len(dataloader), desc="Processing batches")
+    total_images = len(dataset)
+    if args.num_images:
+        total_images = min(total_images, args.num_images)
+    
+    pbar = tqdm(total=total_images, desc="Processing images")
     
     img_idx_offset = 0
     for batch_idx, (images, labels) in enumerate(dataloader):
         images = images.to(device)
         
-        with torch.no_grad():
-            # Forward pass to get feature maps
-            # feature shape: (B, C, H, W)
-            feature, _, _, _, _ = model.forward_partial(images)
+        # We need to process images one by one for compute_feature_importance
+        B = images.shape[0]
+        
+        for b in range(B):
+            img_idx = img_idx_offset + b
+            if args.num_images and img_idx >= args.num_images:
+                pbar.close()
+                return results
             
-            B, C, H, W = feature.shape
-            reshaped_fm = feature.view(B, C, H * W) # (B, C, HW)
+            img_path = image_paths[img_idx]
+            label_idx = labels[b].item()
+            
+            # Forward pass for this single image
+            with torch.no_grad():
+                feature, _, Rt, S, output = model.forward_partial(images[b:b+1])
+            
+            B_f, C, H, W = feature.shape
+            reshaped_fm = feature.view(C, H * W) # (C, HW)
             
             # Normalize feature maps for cosine similarity
-            fm_norm = torch.nn.functional.normalize(reshaped_fm, dim=1) # Normalize over channels
+            fm_norm = torch.nn.functional.normalize(reshaped_fm, dim=0) # Normalize over channels (C)
             
-            for b in range(B):
-                img_idx = img_idx_offset + b
-                img_path = image_paths[img_idx]
-                label = labels[b].item()
+            # Prototype for this class
+            proto = xprotos[label_idx] # (C, d)
+            proto_norm = torch.nn.functional.normalize(proto, dim=0) # (C, d)
+            
+            # 1. Cosine Similarity: (HW, C) @ (C, d) -> (HW, d)
+            sims = fm_norm.T @ proto_norm 
+            max_sims, max_indices = torch.max(sims, dim=0) # (d,), (d,)
+            
+            for d in range(subspace_dim):
+                sim_val = max_sims[d].item()
+                if results['closest'][label_idx][d] is None or sim_val > results['closest'][label_idx][d]['similarity']:
+                    idx = max_indices[d].item()
+                    results['closest'][label_idx][d] = {
+                        'similarity': sim_val,
+                        'image_path': img_path,
+                        'row': idx // W,
+                        'col': idx % W,
+                        'H': H,
+                        'W': W
+                    }
+            
+            # 2. Importance (Attribution)
+            for d in range(subspace_dim):
+                # Create temporary relevances with only direction d active
+                temp_relevances = torch.zeros_like(relevances)
+                temp_relevances[0, d] = 1.0
                 
-                # Prototype for this class
-                proto = xprotos[label] # (C, d)
-                proto_norm = torch.nn.functional.normalize(proto, dim=0) # (C, d)
+                # compute_feature_importance expects batch size 1
+                region_heatmap_d, _ = compute_feature_importance(
+                    feature, torch.tensor([label_idx], device=device), Rt, S, output,
+                    xprotos,
+                    temp_relevances,
+                    k_negatives=args.k_negatives,
+                    args=args,
+                    print_info=False
+                )
                 
-                # Similarities for this image: (HW, d)
-                # fm_norm[b] is (C, HW), so fm_norm[b].T is (HW, C)
-                sims = fm_norm[b].T @ proto_norm # (HW, C) @ (C, d) -> (HW, d)
+                # region_heatmap_d is (H, W)
+                imp_val, imp_idx = torch.max(region_heatmap_d.view(-1), dim=0)
+                imp_val = imp_val.item()
+                imp_idx = imp_idx.item()
                 
-                max_sims, max_indices = torch.max(sims, dim=0) # (d,), (d,)
-                
-                for d in range(subspace_dim):
-                    sim_val = max_sims[d].item()
-                    if best_patches[label][d] is None or sim_val > best_patches[label][d]['similarity']:
-                        idx = max_indices[d].item()
-                        best_patches[label][d] = {
-                            'similarity': sim_val,
-                            'image_path': img_path,
-                            'row': idx // W,
-                            'col': idx % W,
-                            'H': H,
-                            'W': W
-                        }
+                if results['important'][label_idx][d] is None or imp_val > results['important'][label_idx][d]['importance']:
+                    results['important'][label_idx][d] = {
+                        'importance': imp_val,
+                        'image_path': img_path,
+                        'row': imp_idx // W,
+                        'col': imp_idx % W,
+                        'H': H,
+                        'W': W
+                    }
+            pbar.update(1)
         
         img_idx_offset += B
-        pbar.update(1)
+        if args.num_images and img_idx_offset >= args.num_images:
+            break
     
     pbar.close()
-    return best_patches
+    return results
 
-def extract_and_save_patches(best_patches: Dict[int, List[Dict[str, Any]]], 
+def extract_and_save_patches(best_patches: Dict[str, Dict[int, List[Dict[str, Any]]]], 
                              classes: List[str], 
                              args: Any, 
                              logger: logging.Logger):
@@ -97,42 +143,44 @@ def extract_and_save_patches(best_patches: Dict[int, List[Dict[str, Any]]],
     os.makedirs(patch_base_dir, exist_ok=True)
     
     logger.info(f"Saving patches to {patch_base_dir}...")
-    logger.info(f"Number of classes in best_patches: {len(best_patches)}")
-    logger.info(f"Number of classes in classes list: {len(classes)}")
     
-    for class_idx, directions in best_patches.items():
-        if class_idx >= len(classes):
-            logger.warning(f"class_idx {class_idx} is out of range for classes list (len: {len(classes)}). Skipping.")
-            continue
-        class_name = classes[class_idx]
-        class_dir = os.path.join(patch_base_dir, class_name)
-        os.makedirs(class_dir, exist_ok=True)
+    for patch_type, class_patches in best_patches.items():
+        type_dir = os.path.join(patch_base_dir, patch_type)
+        os.makedirs(type_dir, exist_ok=True)
         
-        for d_idx, patch_info in enumerate(directions):
-            if patch_info is None:
+        for class_idx, directions in class_patches.items():
+            if class_idx >= len(classes):
+                logger.warning(f"class_idx {class_idx} is out of range for classes list (len: {len(classes)}). Skipping.")
                 continue
+            class_name = classes[class_idx]
+            class_dir = os.path.join(type_dir, class_name)
+            os.makedirs(class_dir, exist_ok=True)
             
-            img_path = patch_info['image_path']
-            row, col = patch_info['row'], patch_info['col']
-            H, W = patch_info['H'], patch_info['W']
-            
-            # Load original image
-            img = Image.open(img_path).convert('RGB')
-            img_w, img_h = img.size
-            
-            # Calculate patch coordinates
-            # Assuming uniform grid
-            patch_w = img_w // W
-            patch_h = img_h // H
-            
-            left = col * patch_w
-            top = row * patch_h
-            right = (col + 1) * patch_w
-            bottom = (row + 1) * patch_h
-            
-            patch = img.crop((left, top, right, bottom))
-            
-            save_path = os.path.join(class_dir, f'direction_{d_idx + 1}.png')
-            patch.save(save_path)
-            
+            for d_idx, patch_info in enumerate(directions):
+                if patch_info is None:
+                    continue
+                
+                img_path = patch_info['image_path']
+                row, col = patch_info['row'], patch_info['col']
+                H, W = patch_info['H'], patch_info['W']
+                
+                # Load original image
+                img = Image.open(img_path).convert('RGB')
+                img_w, img_h = img.size
+                
+                # Calculate patch coordinates
+                # Assuming uniform grid
+                patch_w = img_w // W
+                patch_h = img_h // H
+                
+                left = col * patch_w
+                top = row * patch_h
+                right = (col + 1) * patch_w
+                bottom = (row + 1) * patch_h
+                
+                patch = img.crop((left, top, right, bottom))
+                
+                save_path = os.path.join(class_dir, f'direction_{d_idx + 1}.png')
+                patch.save(save_path)
+                
     logger.info("All patches saved successfully.")
