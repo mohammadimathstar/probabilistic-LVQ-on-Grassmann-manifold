@@ -11,10 +11,14 @@ import torch
 import numpy as np
 import matplotlib.pyplot as plt
 import random
-from typing import Any, Tuple
+from typing import Any, Tuple, List
 
 from explain.regions.attribution import compute_feature_importance, save_importance_heatmap
-from explain.regions.visualization import plot_important_region_per_principal_direction, visualize_regions
+from explain.regions.visualization import (
+    plot_important_region_per_principal_direction, 
+    visualize_regions,
+    visualize_regions_with_patch_matching
+)
 from explain.regions.patch_finder import find_closest_patches_from_dataset, extract_and_save_patches
 from explain.common_utils import load_and_process_images_generator
 from util.data import get_dataloaders, get_data
@@ -24,6 +28,8 @@ def run_explanation_engine(model: torch.nn.Module, args: Any, logger: logging.Lo
     """
     Main entry point to run the explanation process for a set of images.
     """
+    # Get classes for visualization
+    _, _, _, classes, _ = get_data(args)
     image_generator = load_and_process_images_generator(args, logger)
     
     processed_count = 0
@@ -38,6 +44,7 @@ def run_explanation_engine(model: torch.nn.Module, args: Any, logger: logging.Lo
             img_transformed=img_transformed,
             label=label,
             original_image=original_image,
+            classes=classes,
             args=args,
             logger=logger
         )
@@ -56,6 +63,7 @@ def explain_single_image(model: torch.nn.Module,
                          img_transformed: torch.Tensor, 
                          label: torch.Tensor, 
                          original_image: Any, 
+                         classes: List[str],
                          args: Any, 
                          logger: logging.Logger):
     """
@@ -78,18 +86,22 @@ def explain_single_image(model: torch.nn.Module,
     plt.imsave(overlay_path, image_np)
 
     # 1. Total Heatmap
-    region_heatmap, rotated_prototype_pos = _generate_total_heatmap(
+    region_heatmap, rotated_prototype_pos, total_max = _generate_total_heatmap(
         model, feature, label, Rt, S, output, out_dir, img_name, image_np, args, logger
     )
 
     # 2. Per-Direction Heatmaps
-    _generate_per_direction_heatmaps(
+    dir_max_values = _generate_per_direction_heatmaps(
         model, feature, label, Rt, S, output, out_dir, img_name, image_np, args, logger
     )
 
     # 3. Additional Visualizations
+    patch_base_dir = os.path.join(args.results_dir, args.dataset, 'patchs')
+    class_name = classes[label.item()]
     plot_important_region_per_principal_direction(
-        image_np, feature[0], rotated_prototype_pos, img_name, args
+        image_np, feature[0], rotated_prototype_pos, img_name, args,
+        patch_base_dir=patch_base_dir,
+        class_name=class_name
     )
 
     # 4. Summary Visualization
@@ -98,6 +110,17 @@ def explain_single_image(model: torch.nn.Module,
         relevances = model.prototype_layer.relevances[0].cpu().numpy()
 
     visualize_regions(out_dir, relevances=relevances)
+    
+    # 5. Summary Visualization with Patch Matching
+    visualize_regions_with_patch_matching(
+        out_dir, 
+        patch_base_dir, 
+        class_name, 
+        relevances=relevances,
+        dir_max_values=dir_max_values,
+        total_max=total_max,
+        grid_size=(7, 7)
+    )
     
     logger.info(f"The image with its heatmap has been saved in '{out_dir}'.\n")
 
@@ -131,7 +154,8 @@ def _generate_total_heatmap(model, feature, label, Rt, S, output, out_dir, img_n
     plt.imsave(overlay_path, overlay)
     
     logger.info(f"Total importance heatmap saved in {out_dir}")
-    return region_heatmap, rotated_prototype_pos
+    total_max = region_heatmap.max().item()
+    return region_heatmap, rotated_prototype_pos, total_max
 
 
 def _generate_per_direction_heatmaps(model, feature, label, Rt, S, output, out_dir, img_name, image_np, args, logger):
@@ -141,6 +165,7 @@ def _generate_per_direction_heatmaps(model, feature, label, Rt, S, output, out_d
     os.makedirs(directions_dir, exist_ok=True)
 
     logger.info(f"Generating heatmaps for {subspace_dim} principal directions...")
+    dir_max_values = []
     
     for d in range(subspace_dim):
         # Create temporary relevances with only direction d active
@@ -173,8 +198,11 @@ def _generate_per_direction_heatmaps(model, feature, label, Rt, S, output, out_d
         overlay_d = 0.6 * image_np + 0.4 * heatmap_norm_d
         overlay_path_d = os.path.join(directions_dir, f'heatmap_overlay_dir_{d}.png')
         plt.imsave(overlay_path_d, overlay_d)
+        
+        dir_max_values.append(region_heatmap_d.max().item())
 
     logger.info(f"Per-direction heatmaps saved in {directions_dir}")
+    return dir_max_values
 
 
 def run_patch_finding_engine(model: torch.nn.Module, args: Any, logger: logging.Logger):

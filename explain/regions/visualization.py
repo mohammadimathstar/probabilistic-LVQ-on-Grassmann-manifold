@@ -8,6 +8,7 @@ import numpy as np
 
 import cv2
 import torch
+from matplotlib.patches import ConnectionPatch
 
 
 
@@ -50,7 +51,9 @@ def plot_important_region_per_principal_direction(image: np.ndarray,
                                                  feature_map: torch.Tensor,
                                                  rotated_prototype: torch.Tensor,
                                                  img_name: str,
-                                                 args: Any):
+                                                 args: Any,
+                                                 patch_base_dir: Optional[str] = None,
+                                                 class_name: Optional[str] = None):
     """
     Visualize the k-closest feature positions for each principal direction by drawing
     colored rectangles on the original image.
@@ -64,19 +67,29 @@ def plot_important_region_per_principal_direction(image: np.ndarray,
     # Convert to uint8 for OpenCV
     draw_img = (image * 255).astype(np.uint8).copy()
 
-    # BGR colors for OpenCV
+    # Fixed colors: Red, Green, Blue, Yellow, Pink (BGR for OpenCV)
     colors = [
-        (255, 0, 0), (0, 255, 0), (0, 0, 255),
-        (255, 255, 0), (255, 0, 255), (0, 255, 255),
-        (128, 0, 128), (0, 128, 255), (0, 0, 128),
-        (128, 128, 0)
+        (0, 0, 255),   # Red
+        (0, 255, 0),   # Green
+        (255, 0, 0),   # Blue
+        (0, 255, 255), # Yellow
+        (203, 192, 255) # Pink
     ]
 
     fname = os.path.splitext(img_name)[0]
     result_dir = os.path.join(args.results_dir, args.dataset, fname)
     os.makedirs(result_dir, exist_ok=True)
 
-    positions_per_dir = k_closest_feature_positions(feature_map, rotated_prototype, args.k_nearest)
+    # Check if we should use patch features instead of prototypes
+    matching_vectors = rotated_prototype.clone()
+    if patch_base_dir and class_name:
+        for d in range(rotated_prototype.shape[1]):
+            feat_path = os.path.join(patch_base_dir, 'closest', class_name, f'direction_{d+1}', 'rank_1_feature.npy')
+            if os.path.exists(feat_path):
+                patch_feat = np.load(feat_path)
+                matching_vectors[:, d] = torch.from_numpy(patch_feat).to(rotated_prototype.device)
+
+    positions_per_dir = k_closest_feature_positions(feature_map, matching_vectors, args.k_nearest)
 
     selected_regions = {}
     for d_idx in range(rotated_prototype.shape[1]):
@@ -181,6 +194,250 @@ def visualize_regions(input_dir: str,
     plt.tight_layout(pad=1.5)
     
     # 4. Save result
+    output_path = os.path.join(input_dir, output_name)
+    plt.savefig(output_path, dpi=150, bbox_inches='tight')
+    plt.close()
+
+
+def visualize_regions_with_patch_matching(input_dir: str, 
+                                         patch_base_dir: str,
+                                         class_name: str,
+                                         output_name: str = "summary_with_patch_matching.pdf", 
+                                         grid_size: Tuple[int, int] = (7, 7),
+                                         relevances: Optional[np.ndarray] = None,
+                                         dir_max_values: Optional[List[float]] = None,
+                                         total_max: Optional[float] = None):
+    """
+    Create a grid visualization that connects closest patches to regions in the original image.
+    
+    Row 1: 
+      - Col 0: Image from plot_important_region_per_principal_direction
+      - Col 1: Closest Patches (stacked vertically, resized to region size)
+      - Col 3: Aggregated Heatmap
+    Rows 2+: Per-direction heatmaps (5 per row).
+    """
+
+    type_dir = "closest" # closest or important
+
+    # 1. Load images
+    original_path = os.path.join(input_dir, "original_image.png")
+    highlighted_path = os.path.join(input_dir, "highlighted_regions.png")
+    total_heatmap_path = os.path.join(input_dir, "heatmap_original_image.png")
+    directions_dir = os.path.join(input_dir, "directions")
+    
+    if not os.path.exists(original_path):
+        return
+    
+    img_orig = Image.open(original_path).convert('RGB')
+    img_orig_np = np.array(img_orig)
+    img_h, img_w = img_orig_np.shape[:2]
+    
+    img_highlighted = Image.open(highlighted_path).convert('RGB') if os.path.exists(highlighted_path) else img_orig
+    
+    # 2. Load Patches
+    patches = []
+    patch_titles = []
+    subspace_dim = 0
+    if relevances is not None:
+        subspace_dim = len(relevances)
+    else:
+        if os.path.exists(directions_dir):
+            subspace_dim = len([f for f in os.listdir(directions_dir) if f.startswith("heatmap_overlay_dir_")])
+
+    for d in range(subspace_dim):
+        patch_path = os.path.join(patch_base_dir, type_dir, class_name, f'direction_{d+1}', 'rank_1.png')
+        if os.path.exists(patch_path):
+            patches.append(Image.open(patch_path).convert('RGB'))
+            patch_titles.append(f"P{d+1}")
+        else:
+            patches.append(None)
+            patch_titles.append(f"P{d+1} (N/A)")
+
+    # 3. Match Patches to Regions (Cosine Similarity)
+    reg_h, reg_w = grid_size
+    patch_h, patch_w = img_h // reg_h, img_w // reg_w
+    
+    matched_positions = []
+    for patch in patches:
+        if patch is None:
+            matched_positions.append(None)
+            continue
+            
+        patch_resized = patch.resize((patch_w, patch_h))
+        patch_np = np.array(patch_resized).astype(np.float32).reshape(-1)
+        patch_norm = patch_np / (np.linalg.norm(patch_np) + 1e-8)
+        
+        max_sim = -1.0
+        best_pos = (0, 0)
+        
+        for r in range(reg_h):
+            for c in range(reg_w):
+                region = img_orig_np[r*patch_h:(r+1)*patch_h, c*patch_w:(c+1)*patch_w]
+                if region.shape[:2] != (patch_h, patch_w):
+                    region = cv2.resize(region, (patch_w, patch_h))
+                
+                region_np = region.astype(np.float32).reshape(-1)
+                region_norm = region_np / (np.linalg.norm(region_np) + 1e-8)
+                
+                sim = np.dot(patch_norm, region_norm)
+                if sim > max_sim:
+                    max_sim = sim
+                    best_pos = (r, c)
+        matched_positions.append(best_pos)
+
+    # 4. Prepare Heatmaps
+    heatmap_imgs = []
+    heatmap_titles = []
+    if os.path.exists(total_heatmap_path):
+        heatmap_imgs.append(Image.open(total_heatmap_path))
+        title = "Aggregated Heatmap"
+        # Removed total_max from title as per user request
+        heatmap_titles.append(title)
+        
+    if os.path.exists(directions_dir):
+        dir_files = sorted([f for f in os.listdir(directions_dir) if f.startswith("heatmap_overlay_dir_")],
+                           key=lambda x: int(x.split("_")[-1].split(".")[0]))
+        for f in dir_files:
+            idx = int(f.split("_")[-1].split(".")[0])
+            heatmap_imgs.append(Image.open(os.path.join(directions_dir, f)))
+            title = f"Direction {idx + 1}"
+            if relevances is not None and idx < len(relevances):
+                title += f" (rel: {relevances[idx]:.3f})"
+            if dir_max_values is not None and idx < len(dir_max_values):
+                title += f" (max: {dir_max_values[idx]:.3f})"
+            heatmap_titles.append(title)
+
+    # 5. Create Visualization
+    dir_cols = 5
+    num_heatmaps = len(heatmap_imgs)
+    num_dir_rows = math.ceil((num_heatmaps - 1) / dir_cols) if num_heatmaps > 1 else 0
+    total_rows = 1 + num_dir_rows
+    max_cols = 5 # Fixed to 5 columns as per user request for heatmap rows
+    
+    from matplotlib.gridspec import GridSpec
+    # Use consistent row height for all rows
+    fig = plt.figure(figsize=(max_cols * 3, total_rows * 3))
+    gs = GridSpec(total_rows, max_cols, figure=fig, height_ratios=[1] * total_rows)
+    
+    # Fixed colors matching the first column: Red, Green, Blue, Yellow, Pink
+    # Using exact RGB tuples to match OpenCV colors in first column
+    # OpenCV uses BGR: (0,0,255)=Red, (0,255,0)=Green, (255,0,0)=Blue, (0,255,255)=Yellow, (203,192,255)=Pink
+    # Matplotlib uses RGB, so we convert:
+    fixed_colors_rgb = [
+        (1.0, 0.0, 0.0),      # Red
+        (0.0, 1.0, 0.0),      # Green  
+        (0.0, 0.0, 1.0),      # Blue
+        (1.0, 1.0, 0.0),      # Yellow
+        (1.0, 0.75, 0.8)      # Pink (203/255, 192/255, 255/255 in RGB)
+    ]
+    
+    def add_border(ax):
+        for spine in ax.spines.values():
+            spine.set_visible(True)
+            spine.set_linewidth(2)
+            spine.set_color('black')
+        ax.set_xticks([])
+        ax.set_yticks([])
+
+    # Row 1, Col 0: Highlighted Image
+    ax_high = fig.add_subplot(gs[0, 0])
+    ax_high.imshow(img_highlighted)
+    ax_high.set_title("Highlighted Regions", fontsize=12, fontweight='bold')
+    add_border(ax_high)
+    
+    # Row 1, Col 1: Patches (Stacked Vertically)
+    valid_patches_info = [(d, patches[d]) for d in range(subspace_dim) if patches[d] is not None]
+    if valid_patches_info:
+        ax_patches = fig.add_subplot(gs[0, 1])
+        # Make patches significantly smaller (50% of region size)
+        small_patch_w = int(patch_w * 0.5)
+        small_patch_h = int(patch_h * 0.5)
+        
+        # Add spacing between patches (5 pixels white space - 50% of previous)
+        spacing = 5
+        resized_patches = []
+        for _, p in valid_patches_info:
+            resized_patch = np.array(p.resize((small_patch_w, small_patch_h)))
+            resized_patches.append(resized_patch)
+            # Add white spacing after each patch except the last
+            if _ != valid_patches_info[-1][0]:
+                white_space = np.ones((spacing, small_patch_w, 3), dtype=np.uint8) * 255
+                resized_patches.append(white_space)
+        
+        # Stack them vertically with spacing
+        stacked_patches = np.vstack(resized_patches)
+        ax_patches.imshow(stacked_patches)
+        ax_patches.set_title("Closest Patches", fontsize=12, fontweight='bold')
+        # Remove border for patches as per user request
+        ax_patches.axis('off')
+        
+        # Compute cosine similarity between each patch and all highlighted regions
+        # to find which direction in column 1 is most similar to each patch
+        patch_to_direction_similarity = []
+        for d, patch in valid_patches_info:
+            patch_resized = patch.resize((small_patch_w, small_patch_h))
+            patch_np = np.array(patch_resized).astype(np.float32).reshape(-1)
+            patch_norm = patch_np / (np.linalg.norm(patch_np) + 1e-8)
+            
+            # Compare with all highlighted regions for all directions
+            similarities = []
+            for dir_idx in range(subspace_dim):
+                # Get the position of this direction's highlighted region
+                if dir_idx < len(matched_positions) and matched_positions[dir_idx] is not None:
+                    r, c = matched_positions[dir_idx]
+                    region = img_orig_np[r*patch_h:(r+1)*patch_h, c*patch_w:(c+1)*patch_w]
+                    if region.shape[:2] != (patch_h, patch_w):
+                        region = cv2.resize(region, (patch_w, patch_h))
+                    
+                    # Resize region to match patch size for fair comparison
+                    region_resized = cv2.resize(region, (small_patch_w, small_patch_h))
+                    region_np = region_resized.astype(np.float32).reshape(-1)
+                    region_norm = region_np / (np.linalg.norm(region_np) + 1e-8)
+                    
+                    sim = np.dot(patch_norm, region_norm)
+                    similarities.append((dir_idx, sim))
+                else:
+                    similarities.append((dir_idx, -1.0))
+            
+            # Find the direction with highest similarity
+            best_dir, best_sim = max(similarities, key=lambda x: x[1])
+            patch_to_direction_similarity.append((d, best_dir + 1))  # +1 for 1-indexed display
+        
+        # Add black boxes around each patch and text labels
+        current_y = 0
+        for i, (patch_idx, best_dir) in enumerate(patch_to_direction_similarity):
+            # Use black color for all patch borders
+            rect = plt.Rectangle((0, current_y), small_patch_w - 1, small_patch_h - 1, 
+                                 edgecolor='black', facecolor='none', linewidth=2)
+            ax_patches.add_patch(rect)
+            
+            # Add text label indicating most similar direction
+            # Position text to the right of the patch
+            ax_patches.text(small_patch_w + 5, current_y + small_patch_h // 2, 
+                           f'→ Dir {best_dir}', 
+                           fontsize=10, fontweight='bold', 
+                           verticalalignment='center',
+                           color='black')
+            
+            current_y += small_patch_h + spacing
+    
+    # Row 1, Col 3: Aggregated Heatmap
+    if len(heatmap_imgs) > 0:
+        ax_agg = fig.add_subplot(gs[0, 3])
+        ax_agg.imshow(heatmap_imgs[0])
+        ax_agg.set_title(heatmap_titles[0], fontsize=12, fontweight='bold')
+        add_border(ax_agg)
+
+    # Rows 2+: Heatmaps (starting from index 1 of heatmap_imgs)
+    for i in range(1, num_heatmaps):
+        row = 1 + (i - 1) // dir_cols
+        col = (i - 1) % dir_cols
+        ax = fig.add_subplot(gs[row, col])
+        ax.imshow(heatmap_imgs[i])
+        ax.set_title(heatmap_titles[i], fontsize=10)
+        add_border(ax)
+
+    plt.tight_layout()
     output_path = os.path.join(input_dir, output_name)
     plt.savefig(output_path, dpi=150, bbox_inches='tight')
     plt.close()

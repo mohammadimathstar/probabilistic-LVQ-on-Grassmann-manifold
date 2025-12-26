@@ -56,7 +56,7 @@ def extract_class_from_filename(filename: str, dataset_name: str) -> str:
         return "_".join(filename.split("_")[:-1])
     elif dataset_name == 'MURA':
         return filename.split("_")[2].split("-")[0]
-    elif dataset_name == 'SkinCancerISIC':
+    elif dataset_name == 'SKINCANCERISIC':
         return "_".join(filename.split("_")[:-2])
     else:
         raise ValueError(f"Unsupported dataset: {dataset_name}")

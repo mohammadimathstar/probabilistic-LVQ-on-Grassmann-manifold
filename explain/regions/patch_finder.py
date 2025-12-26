@@ -96,7 +96,8 @@ def find_closest_patches_from_dataset(model: torch.nn.Module,
                     'row': idx // W,
                     'col': idx % W,
                     'H': H,
-                    'W': W
+                    'W': W,
+                    'feature_vector': reshaped_fm[:, idx].cpu().numpy()
                 }
                 
                 # Maintain top-K
@@ -131,7 +132,8 @@ def find_closest_patches_from_dataset(model: torch.nn.Module,
                     'row': imp_idx // W,
                     'col': imp_idx % W,
                     'H': H,
-                    'W': W
+                    'W': W,
+                    'feature_vector': reshaped_fm[:, imp_idx].cpu().numpy()
                 }
                 
                 # Maintain top-K
@@ -203,5 +205,10 @@ def extract_and_save_patches(best_patches: Dict[str, Dict[int, List[List[Dict[st
                     # Filename includes rank
                     save_path = os.path.join(direction_dir, f'rank_{rank + 1}.png')
                     patch.save(save_path)
+                    
+                    # Save feature vector
+                    if 'feature_vector' in patch_info:
+                        feat_path = os.path.join(direction_dir, f'rank_{rank + 1}_feature.npy')
+                        np.save(feat_path, patch_info['feature_vector'])
                 
     logger.info("All patches saved successfully.")
