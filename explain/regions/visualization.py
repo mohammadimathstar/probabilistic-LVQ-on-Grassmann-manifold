@@ -254,6 +254,7 @@ def visualize_regions_with_patch_matching(input_dir: str,
             patch_titles.append(f"P{d+1} (N/A)")
 
     # 3. Match Patches to Regions (Cosine Similarity)
+    # For each patch, find the region in the original image with highest similarity
     reg_h, reg_w = grid_size
     patch_h, patch_w = img_h // reg_h, img_w // reg_w
     
@@ -265,7 +266,7 @@ def visualize_regions_with_patch_matching(input_dir: str,
             
         patch_resized = patch.resize((patch_w, patch_h))
         patch_np = np.array(patch_resized).astype(np.float32).reshape(-1)
-        patch_norm = patch_np #/ (np.linalg.norm(patch_np) + 1e-8) ############ Normalize patch
+        patch_norm = patch_np / (np.linalg.norm(patch_np) + 1e-8)  # Normalize for cosine similarity
         
         max_sim = -1.0
         best_pos = (0, 0)
@@ -277,13 +278,121 @@ def visualize_regions_with_patch_matching(input_dir: str,
                     region = cv2.resize(region, (patch_w, patch_h))
                 
                 region_np = region.astype(np.float32).reshape(-1)
-                region_norm = region_np #/ (np.linalg.norm(region_np) + 1e-8)
+                region_norm = region_np / (np.linalg.norm(region_np) + 1e-8)  # Normalize for cosine similarity
                 
                 sim = np.dot(patch_norm, region_norm)
                 if sim > max_sim:
                     max_sim = sim
                     best_pos = (r, c)
         matched_positions.append(best_pos)
+    
+    # 3b. Create highlighted image with boxes around regions most similar to each patch
+    # Track which patches match which regions to handle overlaps
+    region_to_patches = {}
+    for patch_idx, pos in enumerate(matched_positions):
+        if pos is None:
+            continue
+        if pos not in region_to_patches:
+            region_to_patches[pos] = []
+        region_to_patches[pos].append(patch_idx)
+    
+    img_highlighted_np = img_orig_np.copy()
+    
+    # Fixed colors: Red, Green, Blue, Yellow, Pink (RGB for PIL/matplotlib)
+    colors_rgb = [
+        (255, 0, 0),      # Red
+        (0, 255, 0),      # Green  
+        (0, 0, 255),      # Blue
+        (255, 255, 0),    # Yellow
+        (255, 192, 203)   # Pink
+    ]
+    
+    # Draw boxes for each patch's best matching region with offset for overlaps
+    for patch_idx, pos in enumerate(matched_positions):
+        if pos is None:
+            continue
+        
+        r, c = pos
+        color = colors_rgb[patch_idx % len(colors_rgb)]
+        
+        # Calculate offset based on how many patches have already been drawn for this region
+        patches_at_this_region = region_to_patches[pos]
+        offset_index = patches_at_this_region.index(patch_idx)
+        
+        # Base coordinates
+        y1, y2 = r * patch_h, (r + 1) * patch_h
+        x1, x2 = c * patch_w, (c + 1) * patch_w
+        
+        # Apply offset (5 pixels per overlap)
+        offset = 5 * offset_index
+        max_offset = min(patch_w // 4, patch_h // 4)  # Don't offset more than 1/4 of region size
+        offset = min(offset, max_offset)
+        
+        y1_offset = y1 + offset
+        y2_offset = y2 - offset
+        x1_offset = x1 + offset
+        x2_offset = x2 - offset
+        
+        # Draw thick border (3 pixels)
+        thickness = 3
+        # Top border
+        img_highlighted_np[y1_offset:y1_offset+thickness, x1_offset:x2_offset] = color
+        # Bottom border
+        img_highlighted_np[y2_offset-thickness:y2_offset, x1_offset:x2_offset] = color
+        # Left border
+        img_highlighted_np[y1_offset:y2_offset, x1_offset:x1_offset+thickness] = color
+        # Right border
+        img_highlighted_np[y1_offset:y2_offset, x2_offset-thickness:x2_offset] = color
+    
+    # Add number labels using PIL for better text rendering
+    from PIL import ImageDraw, ImageFont
+    img_pil = Image.fromarray(img_highlighted_np)
+    draw = ImageDraw.Draw(img_pil)
+    
+    # Use a larger font size for visibility
+    try:
+        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 20)
+    except:
+        font = ImageFont.load_default()
+    
+    # Draw number labels for each patch
+    for patch_idx, pos in enumerate(matched_positions):
+        if pos is None:
+            continue
+        
+        r, c = pos
+        color = colors_rgb[patch_idx % len(colors_rgb)]
+        
+        # Calculate same offset as before
+        patches_at_this_region = region_to_patches[pos]
+        offset_index = patches_at_this_region.index(patch_idx)
+        offset = 5 * offset_index
+        max_offset = min(patch_w // 4, patch_h // 4)
+        offset = min(offset, max_offset)
+        
+        y1 = r * patch_h + offset
+        x1 = c * patch_w + offset
+        
+        # Draw text with white background for visibility
+        text = str(patch_idx + 1)
+        text_bbox = draw.textbbox((0, 0), text, font=font)
+        text_w = text_bbox[2] - text_bbox[0]
+        text_h = text_bbox[3] - text_bbox[1]
+        
+        # Position in top-left corner with small padding
+        text_x = x1 + 5
+        text_y = y1 + 5
+        
+        # Draw white background rectangle
+        draw.rectangle([text_x - 2, text_y - 2, text_x + text_w + 2, text_y + text_h + 2], 
+                      fill=(255, 255, 255))
+        # Draw text in the patch's color
+        draw.text((text_x, text_y), text, fill=color, font=font)
+    
+    img_highlighted_np = np.array(img_pil)
+    
+    # Update img_highlighted to use our newly created image
+    img_highlighted = Image.fromarray(img_highlighted_np)
 
     # 4. Prepare Heatmaps
     heatmap_imgs = []
@@ -371,53 +480,23 @@ def visualize_regions_with_patch_matching(input_dir: str,
         # Remove border for patches as per user request
         ax_patches.axis('off')
         
-        # Compute cosine similarity between each patch and all highlighted regions
-        # to find which direction in column 1 is most similar to each patch
-        patch_to_direction_similarity = []
-        for d, patch in valid_patches_info:
-            patch_resized = patch.resize((small_patch_w, small_patch_h))
-            patch_np = np.array(patch_resized).astype(np.float32).reshape(-1)
-            patch_norm = patch_np / (np.linalg.norm(patch_np) + 1e-8)
-            
-            # Compare with all highlighted regions for all directions
-            similarities = []
-            for dir_idx in range(subspace_dim):
-                # Get the position of this direction's highlighted region
-                if dir_idx < len(matched_positions) and matched_positions[dir_idx] is not None:
-                    r, c = matched_positions[dir_idx]
-                    region = img_orig_np[r*patch_h:(r+1)*patch_h, c*patch_w:(c+1)*patch_w]
-                    if region.shape[:2] != (patch_h, patch_w):
-                        region = cv2.resize(region, (patch_w, patch_h))
-                    
-                    # Resize region to match patch size for fair comparison
-                    region_resized = cv2.resize(region, (small_patch_w, small_patch_h))
-                    region_np = region_resized.astype(np.float32).reshape(-1)
-                    region_norm = region_np / (np.linalg.norm(region_np) + 1e-8)
-                    
-                    sim = np.dot(patch_norm, region_norm)
-                    similarities.append((dir_idx, sim))
-                else:
-                    similarities.append((dir_idx, -1.0))
-            
-            # Find the direction with highest similarity
-            best_dir, best_sim = max(similarities, key=lambda x: x[1])
-            patch_to_direction_similarity.append((d, best_dir + 1))  # +1 for 1-indexed display
-        
-        # Add black boxes around each patch and text labels
+        # Add colored boxes around each patch matching the colors in Column 0
         current_y = 0
-        for i, (patch_idx, best_dir) in enumerate(patch_to_direction_similarity):
-            # Use black color for all patch borders
+        for i, (patch_idx, _) in enumerate(valid_patches_info):
+            # Use the same color as the box in Column 0
+            color = fixed_colors_rgb[patch_idx % len(fixed_colors_rgb)]
+            
+            # Draw colored rectangle around patch
             rect = plt.Rectangle((0, current_y), small_patch_w - 1, small_patch_h - 1, 
-                                 edgecolor='black', facecolor='none', linewidth=2)
+                                 edgecolor=color, facecolor='none', linewidth=3)
             ax_patches.add_patch(rect)
             
-            # Add text label indicating most similar direction
-            # Position text to the right of the patch
+            # Add number label to the right of the patch
             ax_patches.text(small_patch_w + 5, current_y + small_patch_h // 2, 
-                           f'→ Dir {best_dir}', 
-                           fontsize=10, fontweight='bold', 
+                           str(patch_idx + 1), 
+                           fontsize=14, fontweight='bold', 
                            verticalalignment='center',
-                           color='black')
+                           color=color)
             
             current_y += small_patch_h + spacing
     
