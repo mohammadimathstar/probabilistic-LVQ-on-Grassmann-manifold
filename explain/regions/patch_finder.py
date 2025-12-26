@@ -76,7 +76,8 @@ def find_closest_patches_from_dataset(model: torch.nn.Module,
             reshaped_fm = feature.view(C, H * W) # (C, HW)
             
             # Normalize feature maps for cosine similarity
-            fm_norm = torch.nn.functional.normalize(reshaped_fm, dim=0) # Normalize over channels (C)
+            # fm_norm = torch.nn.functional.normalize(reshaped_fm, dim=0) ######### Normalize over channels (C)
+            fm_norm = reshaped_fm 
             
             # Prototype for this class
             proto = xprotos[label_idx] # (C, d)

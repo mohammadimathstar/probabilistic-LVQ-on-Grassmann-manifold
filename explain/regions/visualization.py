@@ -265,7 +265,7 @@ def visualize_regions_with_patch_matching(input_dir: str,
             
         patch_resized = patch.resize((patch_w, patch_h))
         patch_np = np.array(patch_resized).astype(np.float32).reshape(-1)
-        patch_norm = patch_np / (np.linalg.norm(patch_np) + 1e-8)
+        patch_norm = patch_np #/ (np.linalg.norm(patch_np) + 1e-8) ############ Normalize patch
         
         max_sim = -1.0
         best_pos = (0, 0)
@@ -277,7 +277,7 @@ def visualize_regions_with_patch_matching(input_dir: str,
                     region = cv2.resize(region, (patch_w, patch_h))
                 
                 region_np = region.astype(np.float32).reshape(-1)
-                region_norm = region_np / (np.linalg.norm(region_np) + 1e-8)
+                region_norm = region_np #/ (np.linalg.norm(region_np) + 1e-8)
                 
                 sim = np.dot(patch_norm, region_norm)
                 if sim > max_sim:
