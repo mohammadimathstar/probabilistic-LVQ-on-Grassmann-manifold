@@ -37,6 +37,7 @@ def get_unified_explain_args() -> argparse.Namespace:
 
     # Patch finding
     parser.add_argument('--find_patches', action='store_true', help='Find closest patches in training set to prototype directions')
+    parser.add_argument('--k_nearest_patches', type=int, help='Number of closest/most important patches per direction')
 
     args = parser.parse_args()
 

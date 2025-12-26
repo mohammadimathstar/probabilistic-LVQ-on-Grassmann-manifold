@@ -10,6 +10,7 @@ import cv2
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
+import random
 from typing import Any, Tuple
 
 from explain.regions.attribution import compute_feature_importance, save_importance_heatmap
@@ -188,6 +189,31 @@ def run_patch_finding_engine(model: torch.nn.Module, args: Any, logger: logging.
     if hasattr(projectset, 'root'):
         logger.info(f"Using data from folder: {projectset.root}")
     
+    if args.num_images:
+        # Create a balanced subset to ensure all classes are represented
+        num_classes = len(classes)
+        images_per_class = max(1, args.num_images // num_classes)
+        
+        # Group indices by class
+        class_indices = [[] for _ in range(num_classes)]
+        # projectset is an ImageFolder
+        for i, (_, label) in enumerate(projectset.samples):
+            class_indices[label].append(i)
+            
+        indices = []
+        for c_idx in range(num_classes):
+            c_indices = class_indices[c_idx]
+            if len(c_indices) > images_per_class:
+                sampled = random.sample(c_indices, images_per_class)
+            else:
+                sampled = c_indices
+            indices.extend(sampled)
+            
+        # Sort indices to maintain some order
+        indices.sort()
+        projectset = torch.utils.data.Subset(projectset, indices)
+        logger.info(f"Created a balanced subset of {len(indices)} images across {num_classes} classes.")
+
     cuda = not args.disable_cuda and torch.cuda.is_available()
     projectloader = torch.utils.data.DataLoader(
         projectset,

@@ -1,7 +1,7 @@
 # Model and Dataset
-dataset: "CUB-200-2011" #"BRAIN" #"CUB-200-2011" , SkinCancerISIC, MURA, PETS
-model_path: "./run_prototypes/pca/cub/run2/"
-# model_path: "./run_prototypes/pca/cub/run1/"
+dataset: "MURA" #"BRAIN" #"CUB-200-2011" , SkinCancerISIC, MURA, PETS
+# model_path: "./run_prototypes/pca/cub/run2/"
+model_path: "./run_prototypes/pca/mura/run1/"
 sample_dir: "./samples"
 results_dir: "./explanations"
 
@@ -9,6 +9,7 @@ results_dir: "./explanations"
 explain_method: "input_x_grad"  # Options: raw_grad, input_x_grad, gradcam
 k_negatives: 0                 # Number of negative prototypes to consider
 k_nearest: 1                   # Number of nearest feature positions per principal direction
+k_nearest_patches: 10           # Number of closest/most important patches per direction
 
 # Visualization Settings
 image_size: 224

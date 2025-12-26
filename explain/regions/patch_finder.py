@@ -12,9 +12,9 @@ from explain.regions.attribution import compute_feature_importance
 def find_closest_patches_from_dataset(model: torch.nn.Module, 
                                      dataloader: torch.utils.data.DataLoader, 
                                      args: Any, 
-                                     logger: logging.Logger) -> Dict[str, Dict[int, List[Dict[str, Any]]]]:
+                                     logger: logging.Logger) -> Dict[str, Dict[int, List[List[Dict[str, Any]]]]]:
     """
-    Find the closest patches in the dataset to each principal direction of each class prototype,
+    Find the top-K closest patches in the dataset to each principal direction of each class prototype,
     both by cosine similarity and by importance (attribution).
     """
     model.eval()
@@ -22,11 +22,12 @@ def find_closest_patches_from_dataset(model: torch.nn.Module,
     
     num_classes = args.nclasses
     subspace_dim = args.dim_of_subspace
+    k_patches = getattr(args, 'k_nearest_patches', 1)
     
-    # best_patches[type][class_idx][direction_idx] = {similarity/importance, image_path, row, col}
+    # results[type][class_idx][direction_idx] = list of {val, image_path, row, col, ...}
     results = {
-        'closest': {c: [None] * subspace_dim for c in range(num_classes)},
-        'important': {c: [None] * subspace_dim for c in range(num_classes)}
+        'closest': {c: [[] for _ in range(subspace_dim)] for c in range(num_classes)},
+        'important': {c: [[] for _ in range(subspace_dim)] for c in range(num_classes)}
     }
     
     # Get prototypes
@@ -35,10 +36,15 @@ def find_closest_patches_from_dataset(model: torch.nn.Module,
         xprotos = model.prototype_layer.xprotos
         relevances = model.prototype_layer.relevances # (1, subspace_dim)
     
-    logger.info("Starting search for closest and most important patches across the dataset...")
+    logger.info(f"Starting search for top-{k_patches} closest and most important patches across the dataset...")
     
     dataset = dataloader.dataset
-    image_paths = [s[0] for s in dataset.samples]
+    if isinstance(dataset, torch.utils.data.Subset):
+        # Get paths from the underlying dataset using the subset indices
+        base_dataset = dataset.dataset
+        image_paths = [base_dataset.samples[i][0] for i in dataset.indices]
+    else:
+        image_paths = [s[0] for s in dataset.samples]
     
     total_images = len(dataset)
     if args.num_images:
@@ -82,16 +88,21 @@ def find_closest_patches_from_dataset(model: torch.nn.Module,
             
             for d in range(subspace_dim):
                 sim_val = max_sims[d].item()
-                if results['closest'][label_idx][d] is None or sim_val > results['closest'][label_idx][d]['similarity']:
-                    idx = max_indices[d].item()
-                    results['closest'][label_idx][d] = {
-                        'similarity': sim_val,
-                        'image_path': img_path,
-                        'row': idx // W,
-                        'col': idx % W,
-                        'H': H,
-                        'W': W
-                    }
+                idx = max_indices[d].item()
+                
+                patch_info = {
+                    'similarity': sim_val,
+                    'image_path': img_path,
+                    'row': idx // W,
+                    'col': idx % W,
+                    'H': H,
+                    'W': W
+                }
+                
+                # Maintain top-K
+                results['closest'][label_idx][d].append(patch_info)
+                results['closest'][label_idx][d].sort(key=lambda x: x['similarity'], reverse=True)
+                results['closest'][label_idx][d] = results['closest'][label_idx][d][:k_patches]
             
             # 2. Importance (Attribution)
             for d in range(subspace_dim):
@@ -114,15 +125,20 @@ def find_closest_patches_from_dataset(model: torch.nn.Module,
                 imp_val = imp_val.item()
                 imp_idx = imp_idx.item()
                 
-                if results['important'][label_idx][d] is None or imp_val > results['important'][label_idx][d]['importance']:
-                    results['important'][label_idx][d] = {
-                        'importance': imp_val,
-                        'image_path': img_path,
-                        'row': imp_idx // W,
-                        'col': imp_idx % W,
-                        'H': H,
-                        'W': W
-                    }
+                patch_info = {
+                    'importance': imp_val,
+                    'image_path': img_path,
+                    'row': imp_idx // W,
+                    'col': imp_idx % W,
+                    'H': H,
+                    'W': W
+                }
+                
+                # Maintain top-K
+                results['important'][label_idx][d].append(patch_info)
+                results['important'][label_idx][d].sort(key=lambda x: x['importance'], reverse=True)
+                results['important'][label_idx][d] = results['important'][label_idx][d][:k_patches]
+            
             pbar.update(1)
         
         img_idx_offset += B
@@ -132,7 +148,7 @@ def find_closest_patches_from_dataset(model: torch.nn.Module,
     pbar.close()
     return results
 
-def extract_and_save_patches(best_patches: Dict[str, Dict[int, List[Dict[str, Any]]]], 
+def extract_and_save_patches(best_patches: Dict[str, Dict[int, List[List[Dict[str, Any]]]]], 
                              classes: List[str], 
                              args: Any, 
                              logger: logging.Logger):
@@ -156,31 +172,36 @@ def extract_and_save_patches(best_patches: Dict[str, Dict[int, List[Dict[str, An
             class_dir = os.path.join(type_dir, class_name)
             os.makedirs(class_dir, exist_ok=True)
             
-            for d_idx, patch_info in enumerate(directions):
-                if patch_info is None:
+            for d_idx, patch_list in enumerate(directions):
+                if not patch_list:
                     continue
                 
-                img_path = patch_info['image_path']
-                row, col = patch_info['row'], patch_info['col']
-                H, W = patch_info['H'], patch_info['W']
+                direction_dir = os.path.join(class_dir, f'direction_{d_idx + 1}')
+                os.makedirs(direction_dir, exist_ok=True)
                 
-                # Load original image
-                img = Image.open(img_path).convert('RGB')
-                img_w, img_h = img.size
-                
-                # Calculate patch coordinates
-                # Assuming uniform grid
-                patch_w = img_w // W
-                patch_h = img_h // H
-                
-                left = col * patch_w
-                top = row * patch_h
-                right = (col + 1) * patch_w
-                bottom = (row + 1) * patch_h
-                
-                patch = img.crop((left, top, right, bottom))
-                
-                save_path = os.path.join(class_dir, f'direction_{d_idx + 1}.png')
-                patch.save(save_path)
+                for rank, patch_info in enumerate(patch_list):
+                    img_path = patch_info['image_path']
+                    row, col = patch_info['row'], patch_info['col']
+                    H, W = patch_info['H'], patch_info['W']
+                    
+                    # Load original image
+                    img = Image.open(img_path).convert('RGB')
+                    img_w, img_h = img.size
+                    
+                    # Calculate patch coordinates
+                    # Assuming uniform grid
+                    patch_w = img_w // W
+                    patch_h = img_h // H
+                    
+                    left = col * patch_w
+                    top = row * patch_h
+                    right = (col + 1) * patch_w
+                    bottom = (row + 1) * patch_h
+                    
+                    patch = img.crop((left, top, right, bottom))
+                    
+                    # Filename includes rank
+                    save_path = os.path.join(direction_dir, f'rank_{rank + 1}.png')
+                    patch.save(save_path)
                 
     logger.info("All patches saved successfully.")
