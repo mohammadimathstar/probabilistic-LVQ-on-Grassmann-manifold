@@ -17,7 +17,8 @@ from explain.regions.attribution import compute_feature_importance, save_importa
 from explain.regions.visualization import (
     plot_important_region_per_principal_direction, 
     visualize_regions,
-    visualize_regions_with_patch_matching
+    visualize_regions_with_patch_matching,
+    visualize_regions_with_extracted_patches
 )
 from explain.regions.patch_finder import find_closest_patches_from_dataset, extract_and_save_patches
 from explain.common_utils import load_and_process_images_generator
@@ -91,7 +92,7 @@ def explain_single_image(model: torch.nn.Module,
     )
 
     # 2. Per-Direction Heatmaps
-    dir_max_values = _generate_per_direction_heatmaps(
+    dir_max_values, dir_max_positions = _generate_per_direction_heatmaps(
         model, feature, label, Rt, S, output, out_dir, img_name, image_np, args, logger
     )
 
@@ -120,6 +121,20 @@ def explain_single_image(model: torch.nn.Module,
         dir_max_values=dir_max_values,
         total_max=total_max,
         grid_size=(7, 7)
+    )
+
+    # 6. Summary Visualization with Extracted Patches
+    visualize_regions_with_extracted_patches(
+        out_dir,
+        image_np,
+        feature[0],
+        rotated_prototype_pos,
+        class_name,
+        args,
+        relevances=relevances,
+        dir_max_values=dir_max_values,
+        total_max=total_max,
+        max_positions=dir_max_positions
     )
     
     logger.info(f"The image with its heatmap has been saved in '{out_dir}'.\n")
@@ -166,6 +181,7 @@ def _generate_per_direction_heatmaps(model, feature, label, Rt, S, output, out_d
 
     logger.info(f"Generating heatmaps for {subspace_dim} principal directions...")
     dir_max_values = []
+    dir_max_positions = []
     
     for d in range(subspace_dim):
         # Create temporary relevances with only direction d active
@@ -200,9 +216,22 @@ def _generate_per_direction_heatmaps(model, feature, label, Rt, S, output, out_d
         plt.imsave(overlay_path_d, overlay_d)
         
         dir_max_values.append(region_heatmap_d.max().item())
+        
+        # Find position of max value
+        # region_heatmap_d is (H, W) or (1, H, W)
+        if region_heatmap_d.dim() == 3:
+            rh = region_heatmap_d.squeeze(0)
+        else:
+            rh = region_heatmap_d
+            
+        max_val_idx = torch.argmax(rh).item()
+        h, w = rh.shape
+        r_idx = max_val_idx // w
+        c_idx = max_val_idx % w
+        dir_max_positions.append((r_idx, c_idx))
 
     logger.info(f"Per-direction heatmaps saved in {directions_dir}")
-    return dir_max_values
+    return dir_max_values, dir_max_positions
 
 
 def run_patch_finding_engine(model: torch.nn.Module, args: Any, logger: logging.Logger):

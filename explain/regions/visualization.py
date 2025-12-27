@@ -522,3 +522,290 @@ def visualize_regions_with_patch_matching(input_dir: str,
     plt.close()
 
 
+
+def visualize_regions_with_extracted_patches(input_dir: str,
+                                             image: np.ndarray,
+                                             feature_map: torch.Tensor,
+                                             rotated_prototype: torch.Tensor,
+                                             class_name: str,
+                                             args: Any,
+                                             output_name: str = "summary_with_extracted_patches.pdf",
+                                             relevances: Optional[np.ndarray] = None,
+                                             dir_max_values: Optional[List[float]] = None,
+                                             total_max: Optional[float] = None,
+                                             max_positions: Optional[List[Tuple[int, int]]] = None):
+    """
+    Create a grid visualization that connects extracted patches from the image to regions in the original image.
+    
+    Row 1: 
+      - Col 0: Image from plot_important_region_per_principal_direction
+      - Col 1: Extracted Patches (stacked vertically, resized to region size)
+      - Col 3: Aggregated Heatmap
+    Rows 2+: Per-direction heatmaps (5 per row).
+    """
+
+    # 1. Load images
+    original_path = os.path.join(input_dir, "original_image.png")
+    highlighted_path = os.path.join(input_dir, "highlighted_regions.png")
+    total_heatmap_path = os.path.join(input_dir, "heatmap_original_image.png")
+    directions_dir = os.path.join(input_dir, "directions")
+    
+    if not os.path.exists(original_path):
+        return
+    
+    img_orig = Image.open(original_path).convert('RGB')
+    img_orig_np = np.array(img_orig)
+    img_h, img_w = img_orig_np.shape[:2]
+    
+    # 2. Extract Patches from Image and Draw Boxes
+    # Get positions
+    if max_positions:
+        # max_positions is already a list of (r, c) tuples, one per direction
+        positions_per_dir = [[pos] for pos in max_positions]
+    else:
+        # Fallback to cosine similarity
+        positions_per_dir = k_closest_feature_positions(feature_map, rotated_prototype, k=1)
+    
+    reg_h, reg_w = feature_map.shape[-2:]
+    patch_h = img_h // reg_h
+    patch_w = img_w // reg_w
+    
+    extracted_patches = []
+    subspace_dim = rotated_prototype.shape[1]
+    
+    # Prepare to draw on the image
+    img_with_boxes_np = img_orig_np.copy()
+    
+    # Fixed colors matching the first column: Red, Green, Blue, Yellow, Pink
+    fixed_colors_rgb = [
+        (255, 0, 0),      # Red
+        (0, 255, 0),      # Green  
+        (0, 0, 255),      # Blue
+        (255, 255, 0),    # Yellow
+        (255, 192, 203)   # Pink
+    ]
+    
+    # We need to handle overlaps if multiple directions pick the same region
+    region_to_dirs = {}
+    for d in range(subspace_dim):
+        if d < len(positions_per_dir):
+            positions = positions_per_dir[d]
+            if positions:
+                pos = positions[0]
+                if pos not in region_to_dirs:
+                    region_to_dirs[pos] = []
+                region_to_dirs[pos].append(d)
+
+    for d in range(subspace_dim):
+        if d < len(positions_per_dir):
+            positions = positions_per_dir[d]
+        else:
+            positions = []
+            
+        if positions:
+            r, c = positions[0] # Take the top 1
+            
+            # Extract patch
+            patch = img_orig_np[r*patch_h:(r+1)*patch_h, c*patch_w:(c+1)*patch_w]
+            if patch.shape[:2] != (patch_h, patch_w):
+                patch = cv2.resize(patch, (patch_w, patch_h))
+            extracted_patches.append(Image.fromarray(patch.astype(np.uint8)))
+            
+            # Draw Box
+            color = fixed_colors_rgb[d % len(fixed_colors_rgb)]
+            
+            # Calculate offset based on overlaps
+            dirs_at_this_region = region_to_dirs[(r, c)]
+            offset_index = dirs_at_this_region.index(d)
+            
+            offset = 5 * offset_index
+            max_offset = min(patch_w // 4, patch_h // 4)
+            offset = min(offset, max_offset)
+            
+            y1, y2 = r * patch_h, (r + 1) * patch_h
+            x1, x2 = c * patch_w, (c + 1) * patch_w
+            
+            y1_offset = y1 + offset
+            y2_offset = y2 - offset
+            x1_offset = x1 + offset
+            x2_offset = x2 - offset
+            
+            thickness = 3
+            # Top
+            img_with_boxes_np[y1_offset:y1_offset+thickness, x1_offset:x2_offset] = color
+            # Bottom
+            img_with_boxes_np[y2_offset-thickness:y2_offset, x1_offset:x2_offset] = color
+            # Left
+            img_with_boxes_np[y1_offset:y2_offset, x1_offset:x1_offset+thickness] = color
+            # Right
+            img_with_boxes_np[y1_offset:y2_offset, x2_offset-thickness:x2_offset] = color
+            
+        else:
+            extracted_patches.append(None)
+
+    # Add number labels
+    from PIL import ImageDraw, ImageFont
+    img_pil = Image.fromarray(img_with_boxes_np)
+    draw = ImageDraw.Draw(img_pil)
+    
+    try:
+        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 20)
+    except:
+        font = ImageFont.load_default()
+
+    for d in range(subspace_dim):
+        positions = positions_per_dir[d]
+        if positions:
+            r, c = positions[0]
+            color = fixed_colors_rgb[d % len(fixed_colors_rgb)]
+            
+            dirs_at_this_region = region_to_dirs[(r, c)]
+            offset_index = dirs_at_this_region.index(d)
+            offset = 5 * offset_index
+            max_offset = min(patch_w // 4, patch_h // 4)
+            offset = min(offset, max_offset)
+            
+            y1 = r * patch_h + offset
+            x1 = c * patch_w + offset
+            
+            text = str(d + 1)
+            text_bbox = draw.textbbox((0, 0), text, font=font)
+            text_w = text_bbox[2] - text_bbox[0]
+            text_h = text_bbox[3] - text_bbox[1]
+            
+            text_x = x1 + 5
+            text_y = y1 + 5
+            
+            draw.rectangle([text_x - 2, text_y - 2, text_x + text_w + 2, text_y + text_h + 2], 
+                          fill=(255, 255, 255))
+            draw.text((text_x, text_y), text, fill=color, font=font)
+
+    img_highlighted = Image.fromarray(np.array(img_pil))
+
+    # 3. Prepare Heatmaps
+    heatmap_imgs = []
+    heatmap_titles = []
+    if os.path.exists(total_heatmap_path):
+        heatmap_imgs.append(Image.open(total_heatmap_path))
+        title = "Aggregated Heatmap"
+        heatmap_titles.append(title)
+        
+    if os.path.exists(directions_dir):
+        dir_files = sorted([f for f in os.listdir(directions_dir) if f.startswith("heatmap_overlay_dir_")],
+                           key=lambda x: int(x.split("_")[-1].split(".")[0]))
+        for f in dir_files:
+            idx = int(f.split("_")[-1].split(".")[0])
+            heatmap_imgs.append(Image.open(os.path.join(directions_dir, f)))
+            title = f"Direction {idx + 1}"
+            ## To add relevance and max values to titles
+            # if relevances is not None and idx < len(relevances):
+            #     title += f" (rel: {relevances[idx]:.3f})"
+            # if dir_max_values is not None and idx < len(dir_max_values):
+            #     title += f" (max: {dir_max_values[idx]:.3f})"
+            heatmap_titles.append(title)
+
+    # 4. Create Visualization
+    dir_cols = 5
+    num_heatmaps = len(heatmap_imgs)
+    num_dir_rows = math.ceil((num_heatmaps - 1) / dir_cols) if num_heatmaps > 1 else 0
+    total_rows = 1 + num_dir_rows
+    max_cols = 5
+    
+    from matplotlib.gridspec import GridSpec
+    fig = plt.figure(figsize=(max_cols * 3, total_rows * 3))
+    gs = GridSpec(total_rows, max_cols, figure=fig, height_ratios=[1] * total_rows)
+    
+    # Fixed colors matching the first column: Red, Green, Blue, Yellow, Pink
+    fixed_colors_rgb = [
+        (1.0, 0.0, 0.0),      # Red
+        (0.0, 1.0, 0.0),      # Green  
+        (0.0, 0.0, 1.0),      # Blue
+        (1.0, 1.0, 0.0),      # Yellow
+        (1.0, 0.75, 0.8)      # Pink
+    ]
+    
+    def add_border(ax):
+        for spine in ax.spines.values():
+            spine.set_visible(True)
+            spine.set_linewidth(2)
+            spine.set_color('black')
+        ax.set_xticks([])
+        ax.set_yticks([])
+
+    # Row 1, Col 0: Original Image
+    ax_orig = fig.add_subplot(gs[0, 0])
+    ax_orig.imshow(img_orig)
+    ax_orig.set_title("Original Image", fontsize=12, fontweight='bold')
+    add_border(ax_orig)
+
+    # Row 1, Col 2: Highlighted Image
+    ax_high = fig.add_subplot(gs[0, 2])
+    ax_high.imshow(img_highlighted)
+    ax_high.set_title("Highlighted Regions", fontsize=12, fontweight='bold')
+    add_border(ax_high)
+    
+    # Row 1, Col 3: Extracted Patches (Stacked Vertically)
+    valid_patches_info = [(d, extracted_patches[d]) for d in range(subspace_dim) if extracted_patches[d] is not None]
+    if valid_patches_info:
+        ax_patches = fig.add_subplot(gs[0, 3])
+        # Make patches significantly smaller (50% of region size)
+        small_patch_w = int(patch_w * 0.5)
+        small_patch_h = int(patch_h * 0.5)
+        
+        # Add spacing between patches
+        spacing = 5
+        resized_patches = []
+        for _, p in valid_patches_info:
+            resized_patch = np.array(p.resize((small_patch_w, small_patch_h)))
+            resized_patches.append(resized_patch)
+            if _ != valid_patches_info[-1][0]:
+                white_space = np.ones((spacing, small_patch_w, 3), dtype=np.uint8) * 255
+                resized_patches.append(white_space)
+        
+        stacked_patches = np.vstack(resized_patches)
+        ax_patches.imshow(stacked_patches)
+        ax_patches.set_title("Patches", fontsize=12, fontweight='bold', loc='left')
+        ax_patches.axis('off')
+        
+        # Left align: set x limit wider than the image
+        # This makes the image (at 0..width) appear on the left side
+        ax_patches.set_xlim(0, small_patch_w * 4)
+        
+        # Add colored boxes around each patch
+        current_y = 0
+        for i, (patch_idx, _) in enumerate(valid_patches_info):
+            color = fixed_colors_rgb[patch_idx % len(fixed_colors_rgb)]
+            
+            rect = plt.Rectangle((0, current_y), small_patch_w - 1, small_patch_h - 1, 
+                                 edgecolor=color, facecolor='none', linewidth=3)
+            ax_patches.add_patch(rect)
+            
+            # Add number label
+            ax_patches.text(small_patch_w + 5, current_y + small_patch_h // 2, 
+                           str(patch_idx + 1), 
+                           fontsize=14, fontweight='bold', 
+                           verticalalignment='center',
+                           color=color)
+            
+            current_y += small_patch_h + spacing
+    
+    # Row 1, Col 4: Aggregated Heatmap
+    if len(heatmap_imgs) > 0:
+        ax_agg = fig.add_subplot(gs[0, 4])
+        ax_agg.imshow(heatmap_imgs[0])
+        ax_agg.set_title(heatmap_titles[0], fontsize=12, fontweight='bold')
+        add_border(ax_agg)
+
+    # Rows 2+: Heatmaps
+    for i in range(1, num_heatmaps):
+        row = 1 + (i - 1) // dir_cols
+        col = (i - 1) % dir_cols
+        ax = fig.add_subplot(gs[row, col])
+        ax.imshow(heatmap_imgs[i])
+        ax.set_title(heatmap_titles[i], fontsize=10, fontweight='bold')
+        add_border(ax)
+
+    plt.tight_layout()
+    output_path = os.path.join(input_dir, output_name)
+    plt.savefig(output_path, dpi=150, bbox_inches='tight')
+    plt.close()
